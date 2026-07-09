@@ -103,6 +103,28 @@ apps:
 - **`stop_exit_codes: [0]`**: treat clean exit as "done, don't restart" for
   one-shot jobs.
 
+## Does pmr slow my app down?
+
+For normal apps: no. Your process runs untouched; the only link is its
+stdout/stderr pipe into the daemon. Writes to that pipe land in kernel memory
+— usually cheaper for your app than writing files itself, since disk I/O is
+offloaded to pmr.
+
+The only physical coupling is pipe backpressure: if an app logs faster than
+the daemon drains, its `write()` blocks. pmr minimizes this three ways:
+
+- child pipes are enlarged to **1 MB** (vs the 64 KB default), so bursts are
+  absorbed by the kernel without blocking your app;
+- the daemon drains with 64 KB buffered reads and batched file writes —
+  measured ~140 k lines/s per process (pm2 saturates sooner and burns ~1.7×
+  the CPU doing it);
+- `--no-log-file` (`disable_log_files: true`) removes disk from the path
+  entirely while `pmr logs` keeps streaming live from the in-memory bus.
+
+An app logging even 10 000 lines/s feels nothing. If you're above ~140 k
+lines/s sustained, reduce log volume — no process manager survives that
+politely.
+
 ## Monitoring
 
 ```sh

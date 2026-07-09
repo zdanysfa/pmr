@@ -32,6 +32,7 @@ Flags on `pmr start <script>`:
 | `--time` | timestamp log lines |
 | `--kill-timeout <ms>` | grace period before SIGKILL |
 | `--max-log-size <size>` | rotate log files above this size (e.g. `10M`) |
+| `--no-log-file` | never write logs to disk; `pmr logs` still streams live |
 | `--health-check <cmd>` | health command (exit 0 = healthy); 3 fails → restart |
 
 ## Managing

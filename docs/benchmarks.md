@@ -25,8 +25,8 @@ Absolute numbers vary by machine; the ratios are the point.
 | `jlist` latency, 25 procs (avg 20) | **4 ms** | 199 ms | 50× |
 | Daemon RSS with 25 procs | **7.0 MB** | 94.1 MB | 13× |
 | Restart 25 procs (full kill sequence) | **36 ms** | 1 908 ms | 53× |
-| Log pipeline throughput (1 proc spamming, 10 s) | 131 k lines/s | 135 k lines/s | ≈1× |
-| Daemon CPU during that log flood | **72.8 %** | 109.8 % | 1.5× less CPU for the same work |
+| Log pipeline throughput (1 proc spamming, 10 s) | **141 k lines/s** | 131 k lines/s | 1.1× |
+| Daemon CPU during that log flood | **65.6 %** | 110.9 % | 1.7× less CPU for the same work |
 
 Log throughput is pipe-bound in both managers (the spammer saturates one CPU);
 the difference is what the daemon pays to move the bytes: pmr does the same

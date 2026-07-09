@@ -447,6 +447,58 @@ fn health_check_restarts_hung_process() {
 }
 
 #[test]
+fn no_log_file_still_streams_live() {
+    let h = Home::new("nolog");
+    let script = h.script("ticker.sh", "while true; do echo beep; sleep 0.1; done");
+
+    h.pmr_ok(&["start", &script, "--name", "quiet", "--no-log-file"]);
+    h.wait_for("quiet online", Duration::from_secs(5), |l| {
+        l[0]["status"] == "online"
+    });
+    std::thread::sleep(Duration::from_millis(600));
+
+    // Nothing on disk...
+    let out_log = h.dir.join("logs/quiet-0-out.log");
+    assert!(
+        !out_log.exists() || std::fs::metadata(&out_log).unwrap().len() == 0,
+        "no-log-file must not write to disk"
+    );
+
+    // ...but the live stream (bus) still delivers lines.
+    let mut child = Command::new(bin())
+        .args(["logs", "quiet", "--lines", "0", "--raw"])
+        .env("PMR_HOME", &h.dir)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut acc = String::new();
+        let mut buf = [0u8; 256];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    acc.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    if acc.contains("beep") {
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = tx.send(acc);
+    });
+    let got = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("live log stream produced nothing");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(got.contains("beep"), "expected live lines, got: {got:?}");
+}
+
+#[test]
 fn cluster_mode_rejected_clearly() {
     let h = Home::new("cluster");
     let cfg = h.dir.join("eco.json");

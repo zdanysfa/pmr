@@ -95,6 +95,11 @@ pub struct AppConfig {
     /// Share one log file across instances (no `-<id>` suffix).
     #[serde(default, alias = "combine_logs")]
     pub merge_logs: bool,
+    /// Keep logs OFF disk entirely: `pmr logs` still streams live (in-memory
+    /// bus), but nothing is written to log files. Zero disk I/O on the log
+    /// path. CLI: `--no-log-file`.
+    #[serde(default)]
+    pub disable_log_files: bool,
     #[serde(default, alias = "pid")]
     pub pid_file: Option<PathBuf>,
 
@@ -253,6 +258,12 @@ impl AppConfig {
 
     pub fn max_log_size(mut self, bytes: u64) -> Self {
         self.max_log_size = Some(bytes);
+        self
+    }
+
+    /// Live-only logs: stream over `pmr logs`, never write to disk.
+    pub fn disable_log_files(mut self, yes: bool) -> Self {
+        self.disable_log_files = yes;
         self
     }
 

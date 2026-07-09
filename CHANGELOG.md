@@ -6,30 +6,24 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- **Native log rotation**: `max_log_size` per app (`--max-log-size 10M`) —
-  file rotated to `<file>.old` when over the limit; no external module needed.
-- **Health checks**: `health_check: {command, interval, timeout, max_fails}` —
-  consecutive failures restart a hung-but-online process. No pm2 equivalent.
-- `pmr completions <shell>` (bash/zsh/fish/elvish/powershell).
-- Release workflow: static musl binaries (x86_64 + aarch64) attached to
-  GitHub Releases on version tags.
-- Benchmark suite (`bench/bench.sh`) and 24 h soak test (`bench/soak.sh`).
-
-### Fixed
-- Dump file now written atomically (temp + rename) — a crash or full disk
-  mid-write can no longer corrupt `dump.pmr`.
-- Daemon shutdown stops all processes in parallel instead of serially, so
-  many stubborn apps can't blow past systemd's stop timeout.
-- Log pumps warn (once) in the daemon log when log writes start failing
-  (full disk) instead of dropping lines silently.
-- `pmr monit` no longer rescans all system processes every frame for the
-  memory gauge.
-
 ## [0.1.0] - 2026-07-10
 
 First release — a ground-up Rust rewrite of pm2 (fork mode), built from a full
 audit of pm2 v7.0.3 internals.
+
+### Beyond pm2
+- **Native log rotation**: `max_log_size` per app (`--max-log-size 10M`) —
+  file rotated to `<file>.old` when over the limit; no external module needed.
+- **Health checks**: `health_check: {command, interval, timeout, max_fails}` —
+  consecutive failures restart a hung-but-online process. No pm2 equivalent.
+- **Live-only logs**: `--no-log-file` / `disable_log_files` — `pmr logs`
+  streams live from the in-memory bus while nothing is written to disk.
+- **Low-overhead log pipeline**: child pipes enlarged to 1 MB (bursts never
+  block the app), 64 KB buffered reads, batched file writes — measured
+  141 k lines/s drained at 66 % daemon CPU (pm2: 131 k at 111 %).
+- `pmr completions <shell>` (bash/zsh/fish/elvish/powershell).
+- Benchmark suite (`bench/bench.sh`) and 24 h soak test (`bench/soak.sh`).
+- Static musl release binaries (x86_64 + aarch64) built on version tags.
 
 ### Added
 

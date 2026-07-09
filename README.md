@@ -26,7 +26,7 @@ soak analysis: [docs/benchmarks.md](docs/benchmarks.md)):
 | Cold start (`ping`)  | **104 ms**          | 444 ms                     |
 | `ls` latency with 25 procs | **4 ms**      | 212 ms                     |
 | Restart 25 processes | **36 ms**           | 1 908 ms                   |
-| Daemon CPU at ~132 k log lines/s | **73 %** | 110 %                      |
+| Log flood drain @ daemon CPU | **141 k lines/s @ 66 %** | 131 k lines/s @ 111 % |
 | 24/7 stability       | soak-tested, no leak indicators ([analysis](docs/benchmarks.md)) | battle-tested |
 | Install footprint    | **one 3.4 MB binary** | Node.js runtime + node_modules |
 | Runtime dependency   | **none**            | Node.js                    |
@@ -156,6 +156,9 @@ Two production features pm2 doesn't have built in:
 - **Health checks** — `health_check: {command, interval, max_fails}`; a
   process that is "online" but hung gets caught and restarted. pm2 has no
   equivalent.
+- **Live-only logs** — `--no-log-file`: zero disk I/O on the log path while
+  `pmr logs` keeps streaming live. Child pipes are enlarged to 1 MB so log
+  bursts never block your app.
 
 ## pm2 semantics, faithfully
 

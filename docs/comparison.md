@@ -14,7 +14,7 @@ release build. Full methodology, more metrics and the 24 h soak analysis:
 | Start 25 instances | **32 ms** | 393 ms | 12× |
 | `ls` latency (25 procs) | **4 ms** | 212 ms | 53× |
 | Restart 25 processes | **36 ms** | 1 908 ms | 53× |
-| Daemon CPU moving ~132 k log lines/s | **72.8 %** | 109.8 % | 1.5× |
+| Daemon CPU on the log flood test | **65.6 %** @ 141 k lines/s | 110.9 % @ 131 k lines/s | 1.7× |
 | Install size | **3.4 MB** binary | Node.js + node_modules | — |
 
 Numbers vary by machine; the ratios are the point. The pmr daemon is a tokio

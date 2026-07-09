@@ -47,6 +47,7 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             time,
             kill_timeout,
             max_log_size,
+            no_log_file,
             health_check,
             args,
         } => {
@@ -124,6 +125,7 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             if let Some(s) = max_log_size {
                 app.max_log_size = Some(config::parse_memory(&s)?);
             }
+            app.disable_log_files = no_log_file;
             if let Some(cmd) = health_check {
                 app = app.health_check(cmd);
             }

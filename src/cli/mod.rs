@@ -70,6 +70,9 @@ pub enum Cmd {
         /// Rotate log files above this size (e.g. 10M, 1G)
         #[arg(long)]
         max_log_size: Option<String>,
+        /// Never write logs to disk; `pmr logs` still streams live
+        #[arg(long)]
+        no_log_file: bool,
         /// Health check command (exit 0 = healthy); 3 consecutive fails restart the app
         #[arg(long)]
         health_check: Option<String>,
