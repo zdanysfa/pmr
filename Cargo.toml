@@ -1,6 +1,6 @@
 [package]
 name = "pmr"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Fast, memory-efficient process manager — pm2 rewritten in Rust. Single binary, CLI + library."
 license = "MIT"

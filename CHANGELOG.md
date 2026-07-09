@@ -6,6 +6,18 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-10
+
+### Added
+- **Zero-coupling mode**: `--disable-logs` / `disable_logs: true` — the child
+  is spawned with stdout/stderr on `/dev/null`. No pipe exists between app and
+  daemon at all: nothing to block on, nothing to drain, literally zero
+  log-path overhead. (`pmr logs` shows nothing for such apps.)
+- docs: full pmr ↔ app touch-point matrix in `docs/production.md` — every
+  interaction, its cost, and how to turn it off; why races cannot occur
+  (no shared memory, single-writer logs, sequential per-process commands,
+  ordered kill sequence).
+
 ## [0.1.0] - 2026-07-10
 
 First release — a ground-up Rust rewrite of pm2 (fork mode), built from a full
@@ -18,8 +30,6 @@ audit of pm2 v7.0.3 internals.
   consecutive failures restart a hung-but-online process. No pm2 equivalent.
 - **Live-only logs**: `--no-log-file` / `disable_log_files` — `pmr logs`
   streams live from the in-memory bus while nothing is written to disk.
-- **Zero-coupling mode**: `--disable-logs` / `disable_logs` — child stdio
-  goes straight to /dev/null; no pipe exists between app and daemon at all.
 - **Low-overhead log pipeline**: child pipes enlarged to 1 MB (bursts never
   block the app), 64 KB buffered reads, batched file writes — measured
   141 k lines/s drained at 66 % daemon CPU (pm2: 131 k at 111 %).
@@ -74,5 +84,6 @@ audit of pm2 v7.0.3 internals.
 - JavaScript config files (JSON/YAML/TOML only).
 - pm2.io/keymetrics agent, module system, deploy, serve.
 
-[Unreleased]: https://github.com/zdanysfa/pmr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zdanysfa/pmr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zdanysfa/pmr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zdanysfa/pmr/releases/tag/v0.1.0
