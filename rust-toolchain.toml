@@ -1,0 +1,5 @@
+# Pinned nightly (edition 2024, let-chains, reproducible builds).
+# Bump deliberately: rustup toolchain install nightly-YYYY-MM-DD
+[toolchain]
+channel = "nightly-2026-07-08"
+components = ["rustfmt", "clippy"]
