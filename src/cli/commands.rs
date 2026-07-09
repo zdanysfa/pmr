@@ -20,6 +20,17 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             println!("pong — daemon v{} (pid {})", reply.version, reply.pid);
             Ok(())
         }
+        Cmd::Version => {
+            println!("pmr {} (client)", crate::VERSION);
+            match Pmr::try_connect() {
+                Ok(mut pmr) => {
+                    let reply = pmr.ping()?;
+                    println!("pmr {} (daemon, pid {})", reply.version, reply.pid);
+                }
+                Err(_) => println!("daemon not running"),
+            }
+            Ok(())
+        }
         Cmd::Kill => {
             match Pmr::try_connect() {
                 Ok(mut pmr) => {

@@ -59,6 +59,7 @@ pmr id <name>            # pm_id(s) for a name
 pmr pid [target]         # OS pid(s)
 pmr monit                # TUI dashboard: q quit, ↑↓/jk select process
 pmr ping                 # daemon liveness + version
+pmr version              # client + daemon versions (also: pmr --version)
 ```
 
 ## Logs

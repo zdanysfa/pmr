@@ -147,6 +147,8 @@ pub enum Cmd {
     Resurrect,
     /// Ping the daemon
     Ping,
+    /// Show client and daemon versions
+    Version,
     /// Stop the daemon and all managed processes
     Kill,
     /// Live monitoring dashboard
