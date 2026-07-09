@@ -17,16 +17,19 @@ Rust — one 3.4 MB binary, a fraction of the memory, no Node.js runtime require
 
 ## Why pmr over pm2
 
-Measured on the same Linux machine, idle daemon, defaults (see
-[docs/comparison.md](docs/comparison.md) to reproduce):
+Measured on the same Linux machine with `bench/bench.sh` (methodology and 24 h
+soak analysis: [docs/benchmarks.md](docs/benchmarks.md)):
 
 |                      | pmr                 | pm2 v7                     |
 | -------------------- | ------------------- | -------------------------- |
-| Daemon memory (RSS)  | **5.5 MB**          | 78.8 MB (**14× more**)     |
-| Cold start (`ping`)  | **0.10 s**          | 0.45 s                     |
+| Daemon memory (RSS), idle → 25 procs | **5.6 → 7.0 MB** | 78.9 → 94.1 MB (**13–14× more**) |
+| Cold start (`ping`)  | **104 ms**          | 444 ms                     |
+| `ls` latency with 25 procs | **4 ms**      | 212 ms                     |
+| Restart 25 processes | **36 ms**           | 1 908 ms                   |
+| Daemon CPU at ~132 k log lines/s | **73 %** | 110 %                      |
+| 24/7 stability       | soak-tested, no leak indicators ([analysis](docs/benchmarks.md)) | battle-tested |
 | Install footprint    | **one 3.4 MB binary** | Node.js runtime + node_modules |
 | Runtime dependency   | **none**            | Node.js                    |
-| Crash-safety         | no GC pauses, no event-loop stalls; supervisor per process | single JS event loop |
 
 Same muscle memory: `start`, `stop`, `restart`, `ls`, `logs`, `monit`, `save`,
 `resurrect`, `startup` — and pm2 config field names are accepted in ecosystem
@@ -165,7 +168,8 @@ Built from a line-by-line audit of pm2 v7.0.3:
 | [docs/configuration.md](docs/configuration.md) | every config field with defaults |
 | [docs/cli.md](docs/cli.md) | full command reference |
 | [docs/library.md](docs/library.md) | Rust crate API |
-| [docs/comparison.md](docs/comparison.md) | pmr vs pm2, benchmark methodology |
+| [docs/comparison.md](docs/comparison.md) | pmr vs pm2 feature map |
+| [docs/benchmarks.md](docs/benchmarks.md) | full benchmark results, soak test, 24 h leak analysis |
 
 ## Development
 

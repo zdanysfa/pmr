@@ -2,32 +2,24 @@
 
 ## Measured
 
-Same Linux x86_64 machine (CachyOS, kernel 7.1), idle daemons, default
-settings, pm2 v7 via Node.js, pmr release build:
+Same Linux x86_64 machine (CachyOS, kernel 7.1), pm2 v7 on Node.js, pmr
+release build. Full methodology, more metrics and the 24 h soak analysis:
+[benchmarks.md](benchmarks.md). Reproduce everything with `bench/bench.sh`.
 
-| Metric | pmr 0.1 | pm2 v7 |
-| --- | --- | --- |
-| Daemon RSS, idle | **5.5 MB** | 78.8 MB |
-| Cold start to first `ping` | **0.10 s** | 0.45 s |
-| Install size | **3.4 MB** (one binary) | Node.js runtime + pm2 node_modules |
+| Metric | pmr 0.1 | pm2 v7 | ratio |
+| --- | --- | --- | --- |
+| Daemon RSS, idle | **5.6 MB** | 78.9 MB | 14× |
+| Daemon RSS, 25 processes | **7.0 MB** | 94.1 MB | 13× |
+| Cold start to first `ping` | **104 ms** | 444 ms | 4× |
+| Start 25 instances | **32 ms** | 393 ms | 12× |
+| `ls` latency (25 procs) | **4 ms** | 212 ms | 53× |
+| Restart 25 processes | **36 ms** | 1 908 ms | 53× |
+| Daemon CPU moving ~132 k log lines/s | **72.8 %** | 109.8 % | 1.5× |
+| Install size | **3.4 MB** binary | Node.js + node_modules | — |
 
-Reproduce:
-
-```sh
-# pmr
-PMR_HOME=/tmp/pmr-bench pmr ping
-ps -o rss= -p "$(cat /tmp/pmr-bench/pmr.pid)"
-# pm2
-PM2_HOME=/tmp/pm2-bench pm2 ping
-ps -o rss= -p "$(cat /tmp/pm2-bench/pm2.pid)"
-# cold start
-pmr kill; time pmr ping
-pm2 kill;  time pm2 ping
-```
-
-Numbers vary by machine; the ratio (roughly an order of magnitude on memory)
-is the point. The pmr daemon is a tokio binary with one supervisor task per
-process — no V8 heap, no GC pauses, no JIT warmup.
+Numbers vary by machine; the ratios are the point. The pmr daemon is a tokio
+binary with one supervisor task per process — no V8 heap, no GC pauses, no
+JIT warmup, and the CLI doesn't pay Node startup on every command.
 
 ## Feature map
 
