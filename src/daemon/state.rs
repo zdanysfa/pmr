@@ -48,6 +48,20 @@ pub struct Proc {
     pub cmd_tx: Option<mpsc::Sender<SupervisorCmd>>,
     /// Cron restart task, aborted when the proc is deleted.
     pub cron_task: Option<tokio::task::JoinHandle<()>>,
+    /// Health-check task, aborted when the proc is deleted.
+    pub health_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Proc {
+    /// Abort the per-proc background tasks (cron, health) — call on removal.
+    pub fn abort_tasks(&mut self) {
+        if let Some(t) = self.cron_task.take() {
+            t.abort();
+        }
+        if let Some(t) = self.health_task.take() {
+            t.abort();
+        }
+    }
 }
 
 impl Proc {
@@ -83,6 +97,7 @@ impl Proc {
             pid_file,
             cmd_tx: None,
             cron_task: None,
+            health_task: None,
             config,
         }
     }

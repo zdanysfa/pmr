@@ -66,6 +66,7 @@ async fn pump_stream<R: AsyncRead + Unpin>(
     // ponytail: sync std write in async task — log lines are tiny local appends
     let mut file = open_append(&path);
     let mut generation = ctx.log_generation.load(Ordering::Relaxed);
+    let mut write_failing = false;
 
     while let Ok(Some(line)) = lines.next_line().await {
         let current = ctx.log_generation.load(Ordering::Relaxed);
@@ -78,7 +79,25 @@ async fn pump_stream<R: AsyncRead + Unpin>(
             None => line.clone(),
         };
         if let Some(f) = file.as_mut() {
-            let _ = writeln!(f, "{formatted}");
+            // Warn once when writes start failing (full disk, removed dir) —
+            // silent log loss is worse than a noisy daemon log.
+            match writeln!(f, "{formatted}") {
+                Err(e) if !write_failing => {
+                    write_failing = true;
+                    crate::daemon::dlog!(
+                        "[{name}:{pm_id}] cannot write to {}: {e} — log lines are being dropped",
+                        path.display()
+                    );
+                }
+                Ok(_) if write_failing => {
+                    write_failing = false;
+                    crate::daemon::dlog!(
+                        "[{name}:{pm_id}] log writes to {} recovered",
+                        path.display()
+                    );
+                }
+                _ => {}
+            }
         }
         ctx.publish(Event::Log {
             pm_id,

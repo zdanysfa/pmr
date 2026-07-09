@@ -33,7 +33,48 @@ pub async fn run(ctx: Arc<Ctx>) {
             dlog!("[{pm_id}] over max_memory_restart, restarting");
             let _ = ops::restart_one(&ctx, pm_id).await;
         }
+        rotate_logs(&ctx);
     }
+}
+
+/// Native log rotation: rename any log file over its app's `max_log_size` to
+/// `<file>.old` (one backup slot) and make the pumps reopen.
+// ponytail: single .old slot; point users at OS logrotate for N generations
+fn rotate_logs(ctx: &Ctx) {
+    let candidates: Vec<std::path::PathBuf> = {
+        let table = ctx.table.lock().unwrap();
+        table
+            .procs
+            .values()
+            .filter_map(|p| p.config.max_log_size.map(|limit| (limit, p)))
+            .flat_map(|(limit, p)| {
+                [&p.out_file, &p.error_file]
+                    .into_iter()
+                    .filter(move |f| std::fs::metadata(f).is_ok_and(|m| m.len() > limit))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    if candidates.is_empty() {
+        return;
+    }
+    for file in &candidates {
+        let old = file.with_extension(format!(
+            "{}old",
+            file.extension()
+                .map(|e| format!("{}.", e.to_string_lossy()))
+                .unwrap_or_default()
+        ));
+        match std::fs::rename(file, &old) {
+            Ok(()) => dlog!("rotated {} → {}", file.display(), old.display()),
+            Err(e) => dlog!("cannot rotate {}: {e}", file.display()),
+        }
+    }
+    // One bump reopens every pump; the ones whose file didn't move just
+    // reopen the same path — harmless.
+    ctx.log_generation
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Refresh cpu/mem into the table; return pm_ids over their memory limit.

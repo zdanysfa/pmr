@@ -394,6 +394,59 @@ fn yaml_ecosystem_with_env_profile() {
 }
 
 #[test]
+fn log_rotation_by_size() {
+    let h = Home::new("rotate");
+    let script = h.script(
+        "chatty.sh",
+        "while true; do echo 'a long log line to fill the file quickly 0123456789'; sleep 0.01; done",
+    );
+
+    // 2KB limit fills within a second; worker interval is 300ms in tests.
+    h.pmr_ok(&["start", &script, "--name", "chatty", "--max-log-size", "2K"]);
+    let rotated = h.dir.join("logs/chatty-0-out.log.old");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !rotated.exists() {
+        assert!(Instant::now() < deadline, "log never rotated");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The live file keeps receiving lines after rotation.
+    let live = h.dir.join("logs/chatty-0-out.log");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let len = std::fs::metadata(&live).map(|m| m.len()).unwrap_or(0);
+        if len > 0 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "live log empty after rotation");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn health_check_restarts_hung_process() {
+    let h = Home::new("health");
+    let script = h.script("hung.sh", "sleep 600"); // "online" but never healthy
+
+    let cfg = h.dir.join("eco.json");
+    std::fs::write(
+        &cfg,
+        format!(
+            r#"{{"apps":[{{"script":"{script}","name":"hung",
+                "health_check":{{"command":"exit 1","interval":200,"timeout":1000,"max_fails":2}}}}]}}"#
+        ),
+    )
+    .unwrap();
+    h.pmr_ok(&["start", cfg.to_str().unwrap()]);
+    h.wait_for("hung online", Duration::from_secs(5), |l| {
+        l[0]["status"] == "online"
+    });
+    // 2 fails × 200ms → restart within a few seconds.
+    h.wait_for("health-check restart", Duration::from_secs(10), |l| {
+        l[0]["restarts"].as_u64().unwrap() >= 1
+    });
+}
+
+#[test]
 fn cluster_mode_rejected_clearly() {
     let h = Home::new("cluster");
     let cfg = h.dir.join("eco.json");

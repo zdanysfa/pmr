@@ -479,10 +479,8 @@ fn clear_cmd_tx(ctx: &Ctx, pm_id: u32) {
 fn remove_proc(ctx: &Ctx, pm_id: u32, name: &str) {
     {
         let mut table = ctx.table.lock().unwrap();
-        if let Some(p) = table.procs.remove(&pm_id)
-            && let Some(t) = p.cron_task
-        {
-            t.abort();
+        if let Some(mut p) = table.procs.remove(&pm_id) {
+            p.abort_tasks();
         }
     }
     ctx.watchers.lock().unwrap().remove(&pm_id);

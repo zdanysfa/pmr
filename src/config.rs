@@ -133,6 +133,16 @@ pub struct AppConfig {
     #[serde(default = "default_true")]
     pub treekill: bool,
 
+    /// Rotate a log file once it exceeds this many bytes (checked every worker
+    /// tick): current file renamed to `<file>.old`, fresh file opened.
+    /// pm2 needs the pm2-logrotate module for this; pmr does it natively.
+    #[serde(default)]
+    pub max_log_size: Option<u64>,
+    /// Periodic health check; too many consecutive failures restart the
+    /// process. Catches "online but hung". Not available in pm2.
+    #[serde(default)]
+    pub health_check: Option<HealthCheck>,
+
     // --- watch ---
     #[serde(default)]
     pub watch: bool,
@@ -147,6 +157,32 @@ pub struct AppConfig {
     pub uid: Option<String>,
     #[serde(default)]
     pub gid: Option<String>,
+}
+
+fn default_hc_interval() -> u64 {
+    30_000
+}
+fn default_hc_timeout() -> u64 {
+    5_000
+}
+fn default_hc_max_fails() -> u32 {
+    3
+}
+
+/// Command-based health check. The command runs via `sh -c` (so
+/// `curl -fsS localhost:3000/health` works); exit code 0 = healthy.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HealthCheck {
+    pub command: String,
+    /// ms between checks.
+    #[serde(default = "default_hc_interval")]
+    pub interval: u64,
+    /// ms before a hanging check counts as failed.
+    #[serde(default = "default_hc_timeout")]
+    pub timeout: u64,
+    /// Consecutive failures before the process is restarted.
+    #[serde(default = "default_hc_max_fails")]
+    pub max_fails: u32,
 }
 
 impl AppConfig {
@@ -212,6 +248,22 @@ impl AppConfig {
 
     pub fn watch(mut self, yes: bool) -> Self {
         self.watch = yes;
+        self
+    }
+
+    pub fn max_log_size(mut self, bytes: u64) -> Self {
+        self.max_log_size = Some(bytes);
+        self
+    }
+
+    /// Health check with defaults (30s interval, 5s timeout, 3 fails → restart).
+    pub fn health_check(mut self, command: impl Into<String>) -> Self {
+        self.health_check = Some(HealthCheck {
+            command: command.into(),
+            interval: default_hc_interval(),
+            timeout: default_hc_timeout(),
+            max_fails: default_hc_max_fails(),
+        });
         self
     }
 
@@ -282,6 +334,14 @@ impl AppConfig {
                 .with_seconds_optional()
                 .parse()
                 .map_err(|e| anyhow::anyhow!("invalid cron_restart '{expr}': {e}"))?;
+        }
+        if let Some(hc) = &self.health_check {
+            if hc.command.trim().is_empty() {
+                bail!("health_check.command must not be empty");
+            }
+            if hc.max_fails == 0 || hc.interval == 0 {
+                bail!("health_check interval and max_fails must be >= 1");
+            }
         }
         Ok(())
     }
@@ -412,6 +472,12 @@ apps:
     # ignore_watch: ["node_modules", ".git"]
     # kill_timeout: 1600         # ms before SIGKILL
     # stop_exit_codes: [0]
+    # max_log_size: 10485760     # rotate log at 10MB (bytes; CLI accepts 10M)
+    # health_check:              # restart when online-but-hung (not in pm2)
+    #   command: "curl -fsS http://localhost:3000/health"
+    #   interval: 30000          # ms
+    #   timeout: 5000            # ms
+    #   max_fails: 3
 "#;
 
 #[cfg(test)]

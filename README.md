@@ -37,17 +37,31 @@ files.
 
 ## Install
 
+Linux only (unix sockets + signals; the daemon is nix-native).
+
+**Prebuilt static binary** (any distro, no dependencies at all):
+
+```sh
+curl -fsSL https://github.com/zdanysfa/pmr/releases/latest/download/pmr-$(curl -fsSL https://api.github.com/repos/zdanysfa/pmr/releases/latest | grep -oP '"tag_name": "\K[^"]+')-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
+```
+
+**With cargo:**
+
 ```sh
 cargo install pmr                     # from crates.io
-# or from git
-cargo install --git https://github.com/zdanysfa/pmr
+cargo install --git https://github.com/zdanysfa/pmr   # from git
 ```
 
-No Rust on the target machine? Build once, copy the binary:
+No Rust on the target machine? Build once (musl = fully static, runs on any
+distro), copy the binary:
 
 ```sh
-cargo build --release && scp target/release/pmr user@vps:/usr/local/bin/
+cargo build --release --target x86_64-unknown-linux-musl
+scp target/x86_64-unknown-linux-musl/release/pmr user@vps:/usr/local/bin/
 ```
+
+Shell completions: `pmr completions bash | sudo tee /etc/bash_completion.d/pmr`
+(also zsh/fish/elvish/powershell).
 
 **VPS / production setup** (Debian/Ubuntu/RHEL/Arch with systemd):
 
@@ -132,6 +146,16 @@ apps:
 ```
 
 Every option: [docs/configuration.md](docs/configuration.md).
+
+## Beyond pm2
+
+Two production features pm2 doesn't have built in:
+
+- **Native log rotation** — `max_log_size: 10M` per app; no pm2-logrotate
+  module, no external config.
+- **Health checks** — `health_check: {command, interval, max_fails}`; a
+  process that is "online" but hung gets caught and restarted. pm2 has no
+  equivalent.
 
 ## pm2 semantics, faithfully
 

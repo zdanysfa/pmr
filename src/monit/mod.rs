@@ -55,6 +55,12 @@ fn ui_loop(
     selected.select(Some(0));
     let mut logs: VecDeque<(u32, String, String)> = VecDeque::with_capacity(LOG_BUFFER);
     let mut last_refresh = Instant::now();
+    // Total RAM for the memory gauge — read once, not per frame.
+    let total_memory = {
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        sys.total_memory()
+    };
 
     loop {
         // Drain pending log events.
@@ -84,7 +90,7 @@ fn ui_loop(
             selected.select(Some(i));
         }
 
-        terminal.draw(|f| draw(f, &procs, &mut selected, &logs))?;
+        terminal.draw(|f| draw(f, &procs, &mut selected, &logs, total_memory))?;
 
         if event::poll(Duration::from_millis(100))?
             && let TermEvent::Key(key) = event::read()?
@@ -115,6 +121,7 @@ fn draw(
     procs: &[ProcessSnapshot],
     selected: &mut ListState,
     logs: &VecDeque<(u32, String, String)>,
+    total_memory: u64,
 ) {
     let outer = Layout::default()
         .direction(Direction::Horizontal)
@@ -161,7 +168,7 @@ fn draw(
     let (cpu, mem, mem_label, pm_id) = match current {
         Some(p) => (
             (p.monit.cpu as f64 / 100.0).clamp(0.0, 1.0),
-            memory_ratio(p.monit.memory),
+            (p.monit.memory as f64 / total_memory.max(1) as f64).clamp(0.0, 1.0),
             crate::cli::table::format_bytes(p.monit.memory),
             Some(p.pm_id),
         ),
@@ -206,11 +213,4 @@ fn draw(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" logs ")),
         right[2],
     );
-}
-
-/// Memory gauge scale: fraction of total system memory.
-fn memory_ratio(bytes: u64) -> f64 {
-    use sysinfo::System;
-    let total = System::new_all().total_memory().max(1);
-    (bytes as f64 / total as f64).clamp(0.0, 1.0)
 }

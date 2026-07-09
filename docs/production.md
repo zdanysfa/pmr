@@ -45,8 +45,16 @@ Remove: `sudo pmr unstartup`.
 
 ## Log rotation
 
-pmr appends to `~/.pmr/logs/*.log` forever; rotate them with the standard OS
-logrotate. `/etc/logrotate.d/pmr`:
+**Built-in (simplest):** set `max_log_size` per app — pmr rotates the file to
+`<file>.old` when it crosses the limit. One backup slot; enough for most VPS
+setups, zero external config:
+
+```sh
+pmr start app.js --max-log-size 10M
+```
+
+**OS logrotate (compressed history, N generations):** pmr appends to
+`~/.pmr/logs/*.log`; rotate with standard logrotate. `/etc/logrotate.d/pmr`:
 
 ```
 /home/YOUR_USER/.pmr/logs/*.log {
@@ -76,6 +84,11 @@ apps:
     exp_backoff_restart_delay: 100   # 100ms → ×1.5 → cap 15s between crash-restarts
     max_memory_restart: 524288000    # restart at 500MB
     kill_timeout: 5000               # give graceful shutdown 5s before SIGKILL
+    max_log_size: 10485760           # rotate logs at 10MB (built-in)
+    health_check:                    # restart when "online but hung"
+      command: "curl -fsS http://localhost:3000/health"
+      interval: 15000
+      max_fails: 3
     env_production:
       NODE_ENV: production
 ```

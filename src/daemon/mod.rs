@@ -3,6 +3,7 @@
 
 pub mod cron;
 pub mod dump;
+pub mod health;
 pub mod logs;
 pub mod ops;
 pub mod rpc;
@@ -136,12 +137,21 @@ async fn graceful_shutdown(ctx: &Arc<Ctx>) {
         dlog!("dump on shutdown failed: {e:#}");
     }
 
+    // Stop everything in parallel — 25 stubborn apps must not take
+    // 25 × kill_timeout and blow past systemd's stop timeout.
     let ids: Vec<u32> = {
         let table = ctx.table.lock().unwrap();
         table.procs.keys().copied().collect()
     };
+    let mut handles = Vec::with_capacity(ids.len());
     for id in ids {
-        let _ = ops::stop_one(ctx, id).await;
+        let ctx = ctx.clone();
+        handles.push(tokio::spawn(async move {
+            let _ = ops::stop_one(&ctx, id).await;
+        }));
+    }
+    for h in handles {
+        let _ = h.await;
     }
 
     let _ = std::fs::remove_file(paths::rpc_sock());

@@ -58,6 +58,23 @@ apps:
 | `kill_signal` | string, `SIGINT` | | First signal sent on stop/restart |
 | `treekill` | bool, `true` | | Signal the whole process group, not just the main pid |
 
+### Beyond pm2
+
+| Field | Type / default | Meaning |
+| --- | --- | --- |
+| `max_log_size` | bytes, off | Rotate a log file over this size: renamed to `<file>.old` (one backup slot), fresh file opened. Checked every worker tick. CLI: `--max-log-size 10M`. pm2 needs the pm2-logrotate module for this. |
+| `health_check` | object, off | `{command, interval: 30000, timeout: 5000, max_fails: 3}` — run `command` via `sh -c` every `interval` ms while the process is online; `max_fails` consecutive non-zero exits (or hangs past `timeout`) restart it. Catches "online but hung" — pm2 has no equivalent. CLI: `--health-check 'curl -fsS localhost:3000/health'`. |
+
+```yaml
+apps:
+  - script: ./api.js
+    max_log_size: 10485760          # 10MB
+    health_check:
+      command: "curl -fsS http://localhost:3000/health"
+      interval: 15000
+      max_fails: 3
+```
+
 ### Watch & user
 
 | Field | Type / default | Aliases | Meaning |

@@ -3,6 +3,23 @@
 Process manager daemon + CLI + Rust library in one crate. `src/lib.rs` is the
 public API; the CLI (`src/main.rs`) is its first consumer.
 
+## Project identity
+
+Slogan: **efficient, high-performance, effective, less memory — better
+performance and more production-grade than pm2**. Every public claim must be
+backed by a measured number from `bench/bench.sh` or `bench/soak.sh` (current:
+~14× less RAM, ~50× faster commands vs pm2). Never publish an unmeasured
+performance claim.
+
+## Working style
+
+Use the **ponytail** skill/principle on every change: the laziest solution
+that actually works — reuse what's here, stdlib before dependencies, shortest
+diff, no speculative abstractions. New dependencies need strong justification
+(the binary must stay small and auditable). Features beyond pm2 are welcome
+when they serve production use (native log rotation and health checks exist
+for exactly that reason), never for checkbox parity.
+
 ## Commands
 
 ```bash

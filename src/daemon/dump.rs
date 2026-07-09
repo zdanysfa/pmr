@@ -40,7 +40,12 @@ pub fn save(ctx: &Ctx) -> Result<PathBuf> {
         let _ = std::fs::copy(&path, paths::dump_backup_file());
     }
     let json = serde_json::to_string_pretty(&entries)?;
-    std::fs::write(&path, json).with_context(|| format!("cannot write {}", path.display()))?;
+    // Atomic: write to a temp file then rename, so a crash or full disk
+    // mid-write can never corrupt the existing dump.
+    let tmp = path.with_extension("pmr.tmp");
+    std::fs::write(&tmp, json).with_context(|| format!("cannot write {}", tmp.display()))?;
+    std::fs::rename(&tmp, &path)
+        .with_context(|| format!("cannot move dump into place at {}", path.display()))?;
     dlog!("saved {} process(es) to {}", entries.len(), path.display());
     Ok(path)
 }

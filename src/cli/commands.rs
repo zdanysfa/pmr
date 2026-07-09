@@ -46,6 +46,8 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             watch,
             time,
             kill_timeout,
+            max_log_size,
+            health_check,
             args,
         } => {
             let mut pmr = Pmr::connect()?;
@@ -118,6 +120,12 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             }
             if let Some(k) = kill_timeout {
                 app.kill_timeout = k;
+            }
+            if let Some(s) = max_log_size {
+                app.max_log_size = Some(config::parse_memory(&s)?);
+            }
+            if let Some(cmd) = health_check {
+                app = app.health_check(cmd);
             }
             let started = pmr.start(app)?;
             println!("{}", table::render_list(&started));
@@ -258,6 +266,11 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             raw,
         } => crate::cli::logs::run(target, lines, err, out, nostream, timestamp, raw),
         Cmd::Monit => crate::monit::run(),
+        Cmd::Completions { shell } => {
+            let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();
+            clap_complete::generate(shell, &mut cmd, "pmr", &mut std::io::stdout());
+            Ok(())
+        }
         Cmd::Daemon => unreachable!("handled in main"),
     }
 }

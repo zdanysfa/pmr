@@ -26,7 +26,9 @@ Description=pmr process manager ({user})
 After=network.target
 
 [Service]
-Type=forking
+# resurrect spawns the detached daemon and exits; oneshot+RemainAfterExit
+# keeps the unit "active" while the daemon runs.
+Type=oneshot
 User={user}
 Environment=PATH={path_env}
 Environment=PMR_HOME={home}
@@ -34,7 +36,6 @@ ExecStart={exe} resurrect
 ExecReload={exe} reloadLogs
 ExecStop={exe} kill
 RemainAfterExit=yes
-Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target

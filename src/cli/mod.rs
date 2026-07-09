@@ -67,6 +67,12 @@ pub enum Cmd {
         /// Milliseconds before SIGKILL after the stop signal
         #[arg(long)]
         kill_timeout: Option<u64>,
+        /// Rotate log files above this size (e.g. 10M, 1G)
+        #[arg(long)]
+        max_log_size: Option<String>,
+        /// Health check command (exit 0 = healthy); 3 consecutive fails restart the app
+        #[arg(long)]
+        health_check: Option<String>,
         /// Arguments passed to the script (after --)
         #[arg(last = true)]
         args: Vec<String>,
@@ -149,6 +155,8 @@ pub enum Cmd {
     Unstartup,
     /// Write a sample ecosystem.yaml
     Init,
+    /// Print shell completions (bash|zsh|fish|elvish|powershell)
+    Completions { shell: clap_complete::Shell },
     /// Run the daemon in the foreground (internal; spawned automatically)
     #[command(hide = true)]
     Daemon,

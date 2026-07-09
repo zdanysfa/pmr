@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 
 use crate::config::AppConfig;
 use crate::daemon::state::{Ctx, Proc, SupervisorCmd};
-use crate::daemon::{cron, dlog, supervisor, watcher};
+use crate::daemon::{cron, dlog, health, supervisor, watcher};
 use crate::ipc::{ProcessSnapshot, Status, Target};
 
 /// Insert table rows for `app` (one per instance) and launch supervisors.
@@ -54,6 +54,7 @@ pub async fn start_app(
         ids.push(pm_id);
         cron::register(ctx, pm_id);
         watcher::register(ctx, pm_id);
+        health::register(ctx, pm_id);
 
         if app.autostart {
             launch(ctx, pm_id).await?;
@@ -133,8 +134,13 @@ pub async fn restart_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
         Some(tx) => {
             let (ack_tx, ack_rx) = oneshot::channel();
             if tx.send(SupervisorCmd::Restart(ack_tx)).await.is_ok() {
-                let _ = ack_rx.await;
-                Ok(())
+                match ack_rx.await {
+                    Ok(()) => Ok(()),
+                    // Supervisor exited (e.g. a racing stop) before handling
+                    // our command — the ack sender was dropped. Cold start so
+                    // "restart" never silently does nothing.
+                    Err(_) => launch(ctx, pm_id).await,
+                }
             } else {
                 // Supervisor died between the check and the send — cold start.
                 launch(ctx, pm_id).await
@@ -181,10 +187,8 @@ pub async fn delete_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
 fn remove_row(ctx: &Ctx, pm_id: u32, name: &str) {
     {
         let mut table = ctx.table.lock().unwrap();
-        if let Some(p) = table.procs.remove(&pm_id)
-            && let Some(t) = p.cron_task
-        {
-            t.abort();
+        if let Some(mut p) = table.procs.remove(&pm_id) {
+            p.abort_tasks();
         }
     }
     ctx.watchers.lock().unwrap().remove(&pm_id);

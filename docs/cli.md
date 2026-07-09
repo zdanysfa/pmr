@@ -31,6 +31,8 @@ Flags on `pmr start <script>`:
 | `--watch` | restart on file changes |
 | `--time` | timestamp log lines |
 | `--kill-timeout <ms>` | grace period before SIGKILL |
+| `--max-log-size <size>` | rotate log files above this size (e.g. `10M`) |
+| `--health-check <cmd>` | health command (exit 0 = healthy); 3 fails → restart |
 
 ## Managing
 
@@ -80,6 +82,7 @@ pmr kill                 # stop all processes + the daemon (dump written first)
 pmr startup [--print-only]   # install systemd boot unit (needs sudo)
 pmr unstartup            # remove it
 pmr init                 # write a sample ecosystem.yaml
+pmr completions bash     # shell completions (bash|zsh|fish|elvish|powershell)
 ```
 
 ## Exit codes
