@@ -73,6 +73,9 @@ pub enum Cmd {
         /// Never write logs to disk; `pmr logs` still streams live
         #[arg(long)]
         no_log_file: bool,
+        /// No log capture at all (child stdio → /dev/null, zero overhead)
+        #[arg(long)]
+        disable_logs: bool,
         /// Health check command (exit 0 = healthy); 3 consecutive fails restart the app
         #[arg(long)]
         health_check: Option<String>,

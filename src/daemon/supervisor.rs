@@ -419,9 +419,15 @@ fn spawn_child(
     };
     cmd.current_dir(&cwd);
     cmd.envs(extra_env);
+    // disable_logs = no pipe at all: zero log-path coupling with the child.
+    let (out, err) = if config.disable_logs {
+        (Stdio::null(), Stdio::null())
+    } else {
+        (Stdio::piped(), Stdio::piped())
+    };
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(out)
+        .stderr(err)
         .kill_on_drop(true);
     cmd.process_group(0); // own group → killpg reaches the tree, daemon signals don't
 

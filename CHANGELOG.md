@@ -18,6 +18,8 @@ audit of pm2 v7.0.3 internals.
   consecutive failures restart a hung-but-online process. No pm2 equivalent.
 - **Live-only logs**: `--no-log-file` / `disable_log_files` — `pmr logs`
   streams live from the in-memory bus while nothing is written to disk.
+- **Zero-coupling mode**: `--disable-logs` / `disable_logs` — child stdio
+  goes straight to /dev/null; no pipe exists between app and daemon at all.
 - **Low-overhead log pipeline**: child pipes enlarged to 1 MB (bursts never
   block the app), 64 KB buffered reads, batched file writes — measured
   141 k lines/s drained at 66 % daemon CPU (pm2: 131 k at 111 %).

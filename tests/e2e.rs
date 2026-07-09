@@ -499,6 +499,28 @@ fn no_log_file_still_streams_live() {
 }
 
 #[test]
+fn disable_logs_means_no_pipe_at_all() {
+    let h = Home::new("dislog");
+    let script = h.script("ticker.sh", "while true; do echo noise; sleep 0.1; done");
+
+    h.pmr_ok(&["start", &script, "--name", "silent", "--disable-logs"]);
+    h.wait_for("silent online", Duration::from_secs(5), |l| {
+        l[0]["status"] == "online"
+    });
+    let pid = h.jlist()[0]["pid"].as_u64().unwrap();
+
+    // The child's stdout is /dev/null — no pipe to the daemon exists.
+    let fd1 = std::fs::read_link(format!("/proc/{pid}/fd/1")).unwrap();
+    assert_eq!(fd1.to_str(), Some("/dev/null"), "stdout must be /dev/null");
+
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        !h.dir.join("logs/silent-0-out.log").exists(),
+        "no log file must be created"
+    );
+}
+
+#[test]
 fn cluster_mode_rejected_clearly() {
     let h = Home::new("cluster");
     let cfg = h.dir.join("eco.json");

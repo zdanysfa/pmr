@@ -123,7 +123,34 @@ the daemon drains, its `write()` blocks. pmr minimizes this three ways:
 
 An app logging even 10 000 lines/s feels nothing. If you're above ~140 k
 lines/s sustained, reduce log volume — no process manager survives that
-politely.
+politely. And for literal zero: `--disable-logs` spawns the child with
+stdout/stderr on `/dev/null` — **no pipe exists at all**, nothing to block on,
+nothing to drain. (`pmr logs` shows nothing for that app.)
+
+### Every pmr ↔ app touch point, and its cost
+
+pmr shares **no memory and no locks** with your app — it's a plain parent
+process watching plain child processes. The complete list of interactions:
+
+| Interaction | When | Cost to your app | Turn it off |
+| --- | --- | --- | --- |
+| stdout/stderr pipe | only when the app writes logs | ~0 (kernel memcpy; blocks only past ~140 k lines/s sustained) | `--no-log-file` (no disk) or `--disable-logs` (no pipe) |
+| Signals (SIGINT/SIGKILL) | only on stop/restart you asked for | none during normal run | — (that's supervision) |
+| CPU/mem sampling | every 30 s | zero — reads `/proc` metadata, never touches the process | it's already free |
+| Health check | opt-in, your command, your interval | whatever your check command costs | don't configure one |
+| Watch → restart | opt-in, debounced (`watch_delay`, default 200 ms) | none until a file actually changes | don't use `--watch` |
+| exit detection | when the app dies | zero (kernel notifies the daemon) | — |
+
+Race conditions between pmr and the app cannot occur by construction: log
+files have a **single writer** (the daemon — unlike pm2's cluster mode where
+children write their own logs), commands for one process are queued and
+executed sequentially by its supervisor, and the kill sequence is strictly
+ordered (signal → grace period → SIGKILL), so your app always gets its clean
+shutdown window.
+
+One subtlety that works in your favor: with stdout on a pipe (not a TTY),
+libc switches your app to block-buffering — the app makes *fewer* write
+syscalls under pmr than it would printing to a terminal.
 
 ## Monitoring
 

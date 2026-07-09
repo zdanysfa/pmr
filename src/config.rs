@@ -100,6 +100,12 @@ pub struct AppConfig {
     /// path. CLI: `--no-log-file`.
     #[serde(default)]
     pub disable_log_files: bool,
+    /// Nuclear option: spawn the child with stdout/stderr connected to
+    /// /dev/null — no pipe exists at all, so log capture costs literally
+    /// nothing and can never block the app. `pmr logs` shows nothing for
+    /// this app. Same semantics as pm2's `disable_logs`. CLI: `--disable-logs`.
+    #[serde(default)]
+    pub disable_logs: bool,
     #[serde(default, alias = "pid")]
     pub pid_file: Option<PathBuf>,
 
@@ -264,6 +270,13 @@ impl AppConfig {
     /// Live-only logs: stream over `pmr logs`, never write to disk.
     pub fn disable_log_files(mut self, yes: bool) -> Self {
         self.disable_log_files = yes;
+        self
+    }
+
+    /// No log capture at all: child stdio goes straight to /dev/null,
+    /// zero coupling between the app and the daemon.
+    pub fn disable_logs(mut self, yes: bool) -> Self {
+        self.disable_logs = yes;
         self
     }
 
