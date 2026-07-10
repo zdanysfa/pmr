@@ -55,13 +55,7 @@ pub fn startup(print_only: bool) -> Result<()> {
     }
 
     if !nix::unistd::Uid::effective().is_root() {
-        let exe = std::env::current_exe()?;
-        bail!(
-            "writing {dest} requires root. Run:\n\n  sudo env PATH=$PATH PMR_HOME={} USER={} {} startup\n",
-            crate::paths::home().display(),
-            whoami(),
-            exe.display()
-        );
+        return sudo_self("startup");
     }
 
     std::fs::write(&dest, unit).with_context(|| format!("cannot write {dest}"))?;
@@ -84,7 +78,7 @@ pub fn unstartup() -> Result<()> {
         return Ok(());
     }
     if !nix::unistd::Uid::effective().is_root() {
-        bail!("removing {dest} requires root; rerun with sudo");
+        return sudo_self("unstartup");
     }
     let service = Path::new(&dest)
         .file_stem()
@@ -96,6 +90,40 @@ pub fn unstartup() -> Result<()> {
     run("systemctl", &["daemon-reload"])?;
     println!("[pmr] removed {dest}");
     Ok(())
+}
+
+/// Re-exec this command through sudo, preserving PATH/PMR_HOME/USER so the
+/// generated unit records the caller's real environment. Interactive terminal
+/// only (sudo needs to ask for a password); otherwise print the command,
+/// which is all pm2 ever does.
+fn sudo_self(subcmd: &str) -> Result<()> {
+    use std::io::IsTerminal;
+    let exe = std::env::current_exe()?;
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    let home = crate::paths::home();
+
+    if std::io::stdin().is_terminal() {
+        println!("[pmr] {subcmd} needs root — asking sudo:");
+        let status = std::process::Command::new("sudo")
+            .arg("env")
+            .arg(format!("PATH={path_env}"))
+            .arg(format!("PMR_HOME={}", home.display()))
+            .arg(format!("USER={}", whoami()))
+            .arg(&exe)
+            .arg(subcmd)
+            .status()
+            .context("failed to run sudo")?;
+        if !status.success() {
+            bail!("sudo {subcmd} failed");
+        }
+        return Ok(());
+    }
+    bail!(
+        "root required. Run:\n\n  sudo env PATH=$PATH PMR_HOME={} USER={} {} {subcmd}\n",
+        home.display(),
+        whoami(),
+        exe.display()
+    );
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<()> {
