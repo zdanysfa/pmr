@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::config::AppConfig;
 use crate::daemon::state::{Ctx, SupervisorCmd, now_ms};
 use crate::daemon::{dlog, logs};
-use crate::ipc::Status;
+use crate::ipc::{Monit, Status};
 
 /// Exponential backoff cap, same as pm2.
 const BACKOFF_CAP_MS: u64 = 15_000;
@@ -105,6 +105,12 @@ pub fn spawn(ctx: Arc<Ctx>, pm_id: u32, spawn_ack: oneshot::Sender<Result<(), St
             let _ = spawn_ack.send(Err(format!("process {pm_id} vanished before start")));
             return;
         };
+        // Atomic already-supervised check: two concurrent cold starts must
+        // not spawn two supervisors (launch's pre-check is only a fast path).
+        if proc.cmd_tx.is_some() {
+            let _ = spawn_ack.send(Ok(()));
+            return;
+        }
         proc.cmd_tx = Some(tx);
         proc.status = Status::Launching;
     }
@@ -160,6 +166,9 @@ async fn run(
                 p.status = Status::Online;
                 p.uptime_ms = Some(now_ms());
                 p.exit_code = None;
+                // Stale monit from the previous pid would block the
+                // first-sample cpu fallback in worker::sample.
+                p.monit = Monit::default();
             }
         }
         let _ = std::fs::write(&pid_file, pid.to_string());
@@ -274,7 +283,18 @@ async fn run(
                             _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
                             cmd = cmd_rx.recv() => {
                                 match cmd {
-                                    Some(SupervisorCmd::Restart(ack)) => { let _ = ack.send(()); }
+                                    Some(SupervisorCmd::Restart(ack)) => {
+                                        // Same bookkeeping as a manual restart of a
+                                        // running proc: forgive instability, count it.
+                                        let mut table = ctx.table.lock().unwrap();
+                                        if let Some(p) = table.procs.get_mut(&pm_id) {
+                                            p.reset_state();
+                                            p.restarts += 1;
+                                            p.status = Status::Launching;
+                                        }
+                                        drop(table);
+                                        let _ = ack.send(());
+                                    }
                                     Some(SupervisorCmd::Stop(ack)) => {
                                         set_dead(&ctx, pm_id, Status::Stopped, exit_code);
                                         ctx.publish_process_event(pm_id, &name, "stop");

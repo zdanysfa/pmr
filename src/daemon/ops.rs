@@ -12,11 +12,54 @@ use crate::ipc::{ProcessSnapshot, Status, Target};
 
 /// Insert table rows for `app` (one per instance) and launch supervisors.
 /// `fixed` pins pm_id/instance (resurrect); otherwise ids are allocated.
+/// Run one op over many ids in parallel — kill sequences must not stack
+/// (300 stubborn apps × kill_timeout would take minutes serially). Every id
+/// is attempted; the first error is reported after all complete.
+#[derive(Clone, Copy)]
+pub enum Op {
+    Stop,
+    Restart,
+    Delete,
+}
+
+pub async fn for_each_parallel(ctx: &Arc<Ctx>, ids: &[u32], op: Op) -> Result<()> {
+    let mut handles = Vec::with_capacity(ids.len());
+    for &id in ids {
+        let ctx = ctx.clone();
+        handles.push(tokio::spawn(async move {
+            match op {
+                Op::Stop => stop_one(&ctx, id).await,
+                Op::Restart => restart_one(&ctx, id).await,
+                Op::Delete => delete_one(&ctx, id).await,
+            }
+        }));
+    }
+    let mut first_err = None;
+    for h in handles {
+        let res = match h.await {
+            Ok(r) => r,
+            Err(e) => Err(anyhow!("operation task panicked: {e}")),
+        };
+        if let Err(e) = res
+            && first_err.is_none()
+        {
+            first_err = Some(e);
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
 pub async fn start_app(
     ctx: &Arc<Ctx>,
     app: AppConfig,
     fixed: Option<(u32, u32)>,
 ) -> Result<Vec<u32>> {
+    if ctx.shutting_down.load(std::sync::atomic::Ordering::Relaxed) {
+        bail!("daemon is shutting down");
+    }
     app.validate()?;
     let name = app.effective_name();
 
@@ -41,6 +84,11 @@ pub async fn start_app(
             let mut table = ctx.table.lock().unwrap();
             let (pm_id, instance) = match fixed {
                 Some((id, inst)) => {
+                    // Never clobber a live row: overwriting drops its cmd_tx
+                    // and SIGKILLs the running child without a kill sequence.
+                    if table.procs.contains_key(&id) {
+                        bail!("pm_id {id} is already occupied");
+                    }
                     table.bump_next_id(id);
                     (id, inst)
                 }
@@ -53,7 +101,6 @@ pub async fn start_app(
         let _ = instance;
         ids.push(pm_id);
         cron::register(ctx, pm_id);
-        watcher::register(ctx, pm_id);
         health::register(ctx, pm_id);
 
         if app.autostart {
@@ -67,6 +114,9 @@ pub async fn start_app(
 /// Spawn a supervisor for an existing (not running) table row and wait for the
 /// first spawn attempt.
 pub async fn launch(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
+    if ctx.shutting_down.load(std::sync::atomic::Ordering::Relaxed) {
+        bail!("daemon is shutting down");
+    }
     {
         let table = ctx.table.lock().unwrap();
         let p = table
@@ -74,13 +124,19 @@ pub async fn launch(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
             .get(&pm_id)
             .ok_or_else(|| anyhow!("no process with id {pm_id}"))?;
         if p.cmd_tx.is_some() {
-            return Ok(()); // already supervised
+            return Ok(()); // already supervised (spawn re-checks atomically)
         }
     }
     let (ack_tx, ack_rx) = oneshot::channel();
     supervisor::spawn(ctx.clone(), pm_id, ack_tx);
     match ack_rx.await {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(())) => {
+            // (Re-)arm the file watcher on every cold start; `stop` disarms it
+            // (pm2 stopWatch parity) so a stopped app can't be revived by a
+            // file change.
+            watcher::register(ctx, pm_id);
+            Ok(())
+        }
         Ok(Err(e)) => Err(anyhow!(e)),
         Err(_) => Err(anyhow!("supervisor for {pm_id} died before starting")),
     }
@@ -102,13 +158,22 @@ pub fn resolve(ctx: &Ctx, target: &Target) -> Result<Vec<u32>> {
 }
 
 pub async fn stop_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
+    // pm2 parity (Client.executeRemote → stopWatch): a stopped process must
+    // not be revived by a file change. `launch` re-arms the watcher.
+    ctx.watchers.lock().unwrap().remove(&pm_id);
     let tx = {
         let mut table = ctx.table.lock().unwrap();
         let Some(p) = table.procs.get_mut(&pm_id) else {
             return Ok(());
         };
         match p.cmd_tx.clone() {
-            Some(tx) => tx,
+            Some(tx) => {
+                // pm2 parity (stopProcessId sets STOPPING synchronously): a
+                // natural exit racing this stop must see Stopping and decide
+                // Stop, not respawn a process the user just stopped.
+                p.status = Status::Stopping;
+                tx
+            }
             None => {
                 p.status = Status::Stopped; // already down (e.g. errored) — normalize
                 return Ok(());
@@ -119,6 +184,16 @@ pub async fn stop_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
     if tx.send(SupervisorCmd::Stop(ack_tx)).await.is_ok() {
         let _ = ack_rx.await;
     }
+    // The supervisor may have exited on the racing crash without seeing our
+    // command (ack dropped) — normalize so the row never sticks at Stopping.
+    {
+        let mut table = ctx.table.lock().unwrap();
+        if let Some(p) = table.procs.get_mut(&pm_id)
+            && p.status == Status::Stopping
+        {
+            p.status = Status::Stopped;
+        }
+    }
     Ok(())
 }
 
@@ -126,12 +201,23 @@ pub async fn restart_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
     let tx = {
         let table = ctx.table.lock().unwrap();
         let Some(p) = table.procs.get(&pm_id) else {
-            bail!("no process with id {pm_id}");
+            return Ok(()); // deleted concurrently — same semantics as stop/delete
         };
         p.cmd_tx.clone()
     };
     match tx {
         Some(tx) => {
+            // Racing crash-exit must not respawn on its own (double
+            // kill/spawn); Stopping routes it to Stop, and the ack-drop
+            // fallback below cold-starts — restart still wins.
+            {
+                let mut table = ctx.table.lock().unwrap();
+                if let Some(p) = table.procs.get_mut(&pm_id)
+                    && p.status == Status::Online
+                {
+                    p.status = Status::Stopping;
+                }
+            }
             let (ack_tx, ack_rx) = oneshot::channel();
             if tx.send(SupervisorCmd::Restart(ack_tx)).await.is_ok() {
                 match ack_rx.await {
@@ -161,17 +247,26 @@ pub async fn restart_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
 
 pub async fn delete_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
     let (tx, name) = {
-        let table = ctx.table.lock().unwrap();
-        let Some(p) = table.procs.get(&pm_id) else {
+        let mut table = ctx.table.lock().unwrap();
+        let Some(p) = table.procs.get_mut(&pm_id) else {
             return Ok(());
         };
+        if p.cmd_tx.is_some() {
+            // Same racing-exit window as stop_one: don't let the exit respawn.
+            p.status = Status::Stopping;
+        }
         (p.cmd_tx.clone(), p.name())
     };
     match tx {
         Some(tx) => {
             let (ack_tx, ack_rx) = oneshot::channel();
             if tx.send(SupervisorCmd::Delete(ack_tx)).await.is_ok() {
-                let _ = ack_rx.await;
+                // Ack dropped = the supervisor exited (e.g. a racing stop was
+                // handled first) without seeing our Delete — remove directly
+                // so `delete` never silently no-ops.
+                if ack_rx.await.is_err() {
+                    remove_row(ctx, pm_id, &name);
+                }
                 return Ok(());
             }
             remove_row(ctx, pm_id, &name);

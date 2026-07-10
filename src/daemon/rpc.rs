@@ -5,19 +5,22 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use serde_json::json;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::daemon::state::Ctx;
-use crate::daemon::{dlog, dump, ops};
+use crate::daemon::{dlog, dump, ops, worker};
 use crate::ipc::{EventFrame, Method, PingReply, Request, Response, Target};
 
 pub async fn handle(ctx: Arc<Ctx>, stream: UnixStream) {
     let (read, mut write) = stream.into_split();
-    let mut lines = BufReader::new(read).lines();
+    // Capped line reads: a request without a newline must not buffer
+    // unboundedly in the daemon (same guard as the log pumps).
+    let mut reader = BufReader::new(read);
+    let mut acc = Vec::new();
 
-    while let Ok(Some(line)) = lines.next_line().await {
+    while let Some(line) = crate::daemon::logs::read_capped_line(&mut reader, &mut acc).await {
         if line.trim().is_empty() {
             continue;
         }
@@ -47,7 +50,7 @@ pub async fn handle(ctx: Arc<Ctx>, stream: UnixStream) {
             if send(&mut write, &ok).await.is_err() {
                 return;
             }
-            forward_events(ctx, write, topics, target).await;
+            forward_events(ctx, reader, write, topics, target).await;
             return;
         }
 
@@ -92,28 +95,25 @@ async fn dispatch(ctx: &Arc<Ctx>, method: Method) -> Result<serde_json::Value> {
             for app in apps {
                 all_ids.extend(ops::start_app(ctx, app, None).await?);
             }
+            // No sample here: a just-spawned pid has 0 cpu ticks, which would
+            // poison sysinfo's delta baseline AND consume the first-sample
+            // fallback in worker::sample. The first `list` samples instead.
             Ok(serde_json::to_value(ops::snapshots(ctx, &all_ids, false))?)
         }
         Method::Stop { target } => {
             let ids = ops::resolve(ctx, &target)?;
-            for id in &ids {
-                ops::stop_one(ctx, *id).await?;
-            }
+            ops::for_each_parallel(ctx, &ids, ops::Op::Stop).await?;
             Ok(serde_json::to_value(ops::snapshots(ctx, &ids, false))?)
         }
         Method::Restart { target } => {
             let ids = ops::resolve(ctx, &target)?;
-            for id in &ids {
-                ops::restart_one(ctx, *id).await?;
-            }
+            ops::for_each_parallel(ctx, &ids, ops::Op::Restart).await?;
             Ok(serde_json::to_value(ops::snapshots(ctx, &ids, false))?)
         }
         Method::Delete { target } => {
             let ids = ops::resolve(ctx, &target)?;
             let before = ops::snapshots(ctx, &ids, false);
-            for id in &ids {
-                ops::delete_one(ctx, *id).await?;
-            }
+            ops::for_each_parallel(ctx, &ids, ops::Op::Delete).await?;
             Ok(serde_json::to_value(before)?)
         }
         Method::Reset { target } => {
@@ -128,9 +128,14 @@ async fn dispatch(ctx: &Arc<Ctx>, method: Method) -> Result<serde_json::Value> {
             }
             Ok(serde_json::to_value(ops::snapshots(ctx, &ids, false))?)
         }
-        Method::List => Ok(serde_json::to_value(ops::all_snapshots(ctx))?),
+        Method::List => {
+            // Fresh cpu/mem per request, like pm2's pidusage in getMonitorData.
+            let _ = worker::sample(ctx, false);
+            Ok(serde_json::to_value(ops::all_snapshots(ctx))?)
+        }
         Method::Describe { target } => {
             let ids = ops::resolve(ctx, &target)?;
+            let _ = worker::sample(ctx, false);
             Ok(serde_json::to_value(ops::snapshots(ctx, &ids, true))?)
         }
         Method::Scale { name, instances } => {
@@ -205,6 +210,7 @@ async fn dispatch(ctx: &Arc<Ctx>, method: Method) -> Result<serde_json::Value> {
 /// client hangs up.
 async fn forward_events(
     ctx: Arc<Ctx>,
+    mut read: BufReader<tokio::net::unix::OwnedReadHalf>,
     mut write: tokio::net::unix::OwnedWriteHalf,
     topics: Vec<String>,
     target: Option<Target>,
@@ -214,9 +220,21 @@ async fn forward_events(
         let table = ctx.table.lock().unwrap();
         table.resolve(t)
     });
+    let mut sink = [0u8; 1024];
 
     loop {
-        let event = match rx.recv().await {
+        // Poll the read half too: filtered-out events never write, so a dead
+        // client would otherwise hold this task + fd + bus receiver forever.
+        let event = tokio::select! {
+            ev = rx.recv() => ev,
+            r = read.read(&mut sink) => {
+                match r {
+                    Ok(0) | Err(_) => return, // client hung up
+                    Ok(_) => continue,        // stray input: ignore
+                }
+            }
+        };
+        let event = match event {
             Ok(e) => e,
             Err(RecvError::Lagged(n)) => {
                 let frame = EventFrame {

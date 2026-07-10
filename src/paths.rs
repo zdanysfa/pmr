@@ -40,10 +40,14 @@ pub fn pid_dir() -> PathBuf {
     home().join("pids")
 }
 
-/// Create the home dir tree if missing. Idempotent.
+/// Create the home dir tree if missing. Idempotent. The home is 0700: dumps
+/// and logs carry app env vars and output (secrets) — no other local user's
+/// business.
 pub fn ensure_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(log_dir())?;
     std::fs::create_dir_all(pid_dir())?;
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(home(), std::fs::Permissions::from_mode(0o700));
     Ok(())
 }
 

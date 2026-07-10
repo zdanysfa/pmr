@@ -138,12 +138,17 @@ pub fn tail_lines(path: &Path, n: usize) -> std::io::Result<Vec<String>> {
         f.seek(SeekFrom::Start(start))?;
         let reader = BufReader::new(&mut f);
         let mut buf: VecDeque<String> = VecDeque::with_capacity(n + 1);
-        for line in reader.lines() {
-            let line = line?;
+        // Bytes + lossy UTF-8: one binary byte in a log file must not blank
+        // the whole tail (`lines()` errors on invalid UTF-8).
+        for chunk in reader.split(b'\n') {
+            let mut chunk = chunk?;
+            if chunk.last() == Some(&b'\r') {
+                chunk.pop();
+            }
             if buf.len() == n + 1 {
                 buf.pop_front();
             }
-            buf.push_back(line);
+            buf.push_back(String::from_utf8_lossy(&chunk).into_owned());
         }
         // First line of a mid-file window is probably partial — drop it.
         let complete = start == 0;
@@ -178,5 +183,11 @@ mod tests {
         assert_eq!(lines, vec!["line 97", "line 98", "line 99"]);
         let all = tail_lines(f.path(), 500).unwrap();
         assert_eq!(all.len(), 100);
+
+        // Binary garbage must not blank the tail (lossy, not an error).
+        f.write_all(b"\xff\xfe binary\nlast line\n").unwrap();
+        let lines = tail_lines(f.path(), 2).unwrap();
+        assert_eq!(lines[1], "last line");
+        assert!(lines[0].contains("binary"));
     }
 }

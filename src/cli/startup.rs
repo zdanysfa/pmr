@@ -11,37 +11,68 @@ fn unit_path() -> String {
 }
 
 fn whoami() -> String {
-    std::env::var("USER").unwrap_or_else(|_| "root".into())
+    // Bare `sudo pmr startup` gives USER=root; SUDO_USER carries the real
+    // caller so the unit doesn't silently target /root/.pmr.
+    match std::env::var("USER") {
+        Ok(u) if u != "root" => u,
+        _ => std::env::var("SUDO_USER").unwrap_or_else(|_| "root".into()),
+    }
 }
 
 fn render_unit() -> Result<String> {
     let user = whoami();
-    let home = crate::paths::home();
+    let home = effective_home(&user);
     let exe = std::env::current_exe().context("cannot locate the pmr binary")?;
     let exe = exe.display();
     let path_env = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
+    if home.starts_with("/tmp") {
+        eprintln!(
+            "[pmr] WARNING: PMR_HOME={} is on tmpfs — the dump (and your saved apps) \
+             will not survive a reboot",
+            home.display()
+        );
+    }
     Ok(format!(
         r#"[Unit]
 Description=pmr process manager ({user})
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
-# resurrect spawns the detached daemon and exits; oneshot+RemainAfterExit
-# keeps the unit "active" while the daemon runs.
-Type=oneshot
+# resurrect spawns the detached daemon (which writes pmr.pid) and exits —
+# classic forking. PIDFile lets systemd track the real daemon, so an
+# OOM-killed/crashed daemon fails the unit and Restart brings the fleet back.
+Type=forking
+PIDFile={home}/pmr.pid
+Restart=on-failure
+RestartSec=5
 User={user}
 Environment=PATH={path_env}
 Environment=PMR_HOME={home}
 ExecStart={exe} resurrect
 ExecReload={exe} reloadLogs
 ExecStop={exe} kill
-RemainAfterExit=yes
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target
 "#,
         home = home.display(),
     ))
+}
+
+/// PMR_HOME for the unit: explicit env wins; otherwise the target user's
+/// home — under bare `sudo` the process HOME is /root, not the caller's.
+fn effective_home(user: &str) -> std::path::PathBuf {
+    if let Ok(h) = std::env::var("PMR_HOME")
+        && !h.is_empty()
+    {
+        return h.into();
+    }
+    if let Ok(Some(u)) = nix::unistd::User::from_name(user) {
+        return u.dir.join(".pmr");
+    }
+    crate::paths::home()
 }
 
 pub fn startup(print_only: bool) -> Result<()> {

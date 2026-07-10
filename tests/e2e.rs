@@ -358,6 +358,19 @@ fn watch_restarts_on_change() {
     h.wait_for("watch restart", Duration::from_secs(10), |l| {
         l[0]["restarts"].as_u64().unwrap() >= 1 && l[0]["status"] == "online"
     });
+
+    // pm2 stopWatch parity: a stopped process must not be revived by a change.
+    h.pmr_ok(&["stop", "watched"]);
+    h.wait_for("watched stopped", Duration::from_secs(5), |l| {
+        l[0]["status"] == "stopped"
+    });
+    std::fs::write(dir.join("change2.txt"), "boop").unwrap();
+    std::thread::sleep(Duration::from_millis(800)); // > debounce; a live watcher would have fired
+    let list = h.jlist();
+    assert_eq!(
+        list[0]["status"], "stopped",
+        "stopped watched proc must stay stopped on file change"
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64};
 
 use tokio::sync::{broadcast, mpsc, oneshot};
 
@@ -218,6 +218,17 @@ pub struct Ctx {
     pub shutdown_tx: mpsc::Sender<()>,
     /// File watchers keyed by pm_id (kept out of `Proc` — not serde-friendly).
     pub watchers: Mutex<HashMap<u32, notify::RecommendedWatcher>>,
+    /// Shared sysinfo sampler: cpu% is a delta between refreshes, so worker
+    /// ticks and on-demand `list` sampling must share one `System`.
+    pub sys: Mutex<sysinfo::System>,
+    /// When `sample()` last refreshed (ms). Refreshing faster than sysinfo's
+    /// MINIMUM_CPU_UPDATE_INTERVAL yields garbage cpu%, so we skip and serve
+    /// the stored monit instead.
+    pub last_sample_ms: AtomicI64,
+    /// Pids fed to the previous `sample()`. Refreshing them once more after
+    /// they die is what evicts them from `sys` — `ProcessesToUpdate::Some`
+    /// only prunes listed pids, so without this the map grows per restart.
+    pub prev_sample_pids: Mutex<Vec<sysinfo::Pid>>,
 }
 
 impl Ctx {

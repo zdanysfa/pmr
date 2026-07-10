@@ -20,7 +20,9 @@ pub fn register(ctx: &Arc<Ctx>, pm_id: u32) {
         let Some(p) = table.procs.get(&pm_id) else {
             return;
         };
-        if !p.config.watch {
+        // cmd_tx gone = a stop won the race between the launch ack and this
+        // call — arming now would revive a stopped proc on file change.
+        if !p.config.watch || p.cmd_tx.is_none() {
             return;
         }
         let dir: PathBuf = p

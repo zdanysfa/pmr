@@ -6,6 +6,63 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-10
+
+Hardening release: four independent audits (concurrency, 24/7 durability,
+crash-safety/reboot, large-scale performance) — every confirmed finding fixed
+and verified empirically.
+
+### Added
+- **Live cpu/mem in `pmr ls`** — metrics sample on demand per `list`/`describe`
+  (like pm2's pidusage), with a pidusage-style lifetime-average fallback for
+  the first sample of a fresh pid; no more `0% / 0b` right after start.
+- **Systemd unit hardening**: `Type=forking` + `PIDFile` + `Restart=on-failure`
+  — an OOM-killed daemon is restarted by systemd; `network-online` ordering so
+  apps don't burn their unstable-restart budget before DNS is up.
+- Daemon raises `RLIMIT_NOFILE` to the hard limit at boot (default 1024 soft
+  dies at ~170 procs); daemon log `pmr.log` self-rotates at 10 MB.
+- Orphan detection at daemon start: stale pid files pointing at live processes
+  are reported loudly before a `resurrect` could double-start them.
+- `pmr kill` now waits for the daemon to actually exit (socket EOF), so
+  `pmr kill && pmr resurrect` and systemd `ExecStop` cannot race the shutdown.
+
+### Fixed
+- **Log pump**: invalid UTF-8 no longer kills log capture permanently; lines
+  cap at 1 MiB (an app printing without newlines can't balloon the daemon);
+  bus copies cap at 8 KiB (a stalled `pmr logs` subscriber can't pin ~1 GiB);
+  deleted log files are recreated automatically; failed log-file opens are
+  reported instead of silently dropping output.
+- **Watcher**: `pmr stop` disarms the file watcher (pm2 `stopWatch` parity) —
+  a stopped app is no longer revived by a file change; re-armed on start.
+- **Stop/restart/delete racing a crash**: status flips to `stopping`
+  synchronously (pm2 parity), so a natural exit racing the command can no
+  longer respawn a process the user just stopped.
+- **Dump durability**: `save` fsyncs file + directory, refuses to overwrite a
+  dump with an empty table, never replaces a good backup with a corrupt
+  fragment; `resurrect` falls back to `dump.pmr.bak` on parse failure too —
+  a power-loss-truncated dump no longer boots the VPS with zero apps.
+- `stop/restart/delete all` run per-process kill sequences in parallel
+  (6 stubborn apps: 9.6 s → 1.6 s; 300 would have taken ~8 minutes).
+- `max_memory_restart` enforcement can no longer be starved by frequent
+  `jlist` polling; over-limit restarts run in parallel off the worker tick.
+- Dead `pmr logs` subscribers are detected via read-half EOF — previously each
+  leaked an fd + task + bus receiver forever (a per-minute watchdog exhausted
+  1024 fds in under a day).
+- sysinfo process map no longer accumulates one stale entry per restart.
+- `pmr delete` can no longer silently no-op when racing a stop; duplicate
+  supervisors can no longer spawn from concurrent cold starts; `start` during
+  daemon shutdown is rejected (previously leaked an unmanaged child).
+- Daemon survives `SIGHUP` (SSH disconnect); accept-loop errors back off
+  instead of spinning at 100 % CPU on fd exhaustion; RPC request lines are
+  length-capped; oversized-request and binary log content handled lossily.
+- `pmr logs` tail no longer goes blank when a log file contains binary bytes.
+- Graceful shutdown drains log pumps before exiting (children's final lines
+  were lost); blocking `stat()` calls moved off the table lock (a hung NFS
+  mount froze every RPC).
+- `sudo pmr startup` resolves the real user via `SUDO_USER` (previously
+  installed a unit for root's `/root/.pmr`); warns when `PMR_HOME` is tmpfs.
+- Dump files are `0600` and `~/.pmr` is `0700` (dumps carry app env secrets).
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

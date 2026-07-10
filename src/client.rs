@@ -179,9 +179,19 @@ impl Pmr {
         self.call(Method::Resurrect)
     }
 
-    /// Ask the daemon to stop everything and exit.
+    /// Ask the daemon to stop everything and exit. Waits (up to 60s) for the
+    /// daemon to actually die — the socket EOF — so `pmr kill && pmr
+    /// resurrect` and systemd ExecStop don't race the shutdown.
     pub fn kill_daemon(&mut self) -> Result<()> {
         let _: serde_json::Value = self.call(Method::Kill)?;
+        let _ = self
+            .stream
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs(60)));
+        let mut sink = String::new();
+        while self.stream.read_line(&mut sink).is_ok_and(|n| n > 0) {
+            sink.clear();
+        }
         Ok(())
     }
 
@@ -281,6 +291,16 @@ fn first_run_banner() {
 
 /// Spawn the daemon detached, stdio appended to `pmr.log`.
 fn spawn_daemon() -> Result<()> {
+    // Unix socket paths are capped at ~108 bytes; a deep PMR_HOME makes the
+    // daemon die on bind with only a cryptic "did not come up" here.
+    let sock = paths::rpc_sock();
+    if sock.as_os_str().len() > 100 {
+        bail!(
+            "PMR_HOME is too deep: socket path {} exceeds the ~108-byte unix socket limit — \
+             set PMR_HOME to a shorter path",
+            sock.display()
+        );
+    }
     paths::ensure_dirs()?;
     let log = std::fs::OpenOptions::new()
         .create(true)

@@ -25,6 +25,12 @@ const READ_BUF: usize = 64 * 1024;
 const WRITE_BUF: usize = 64 * 1024;
 /// Kernel pipe capacity to request for child stdio (default is 64 KB).
 const PIPE_SIZE: i32 = 1024 * 1024;
+/// A "line" longer than this is split — an app printing without newlines must
+/// not balloon the daemon's memory.
+const MAX_LINE: usize = 1024 * 1024;
+/// Bus copies are truncated harder: the broadcast ring retains up to 1024
+/// events until overwritten, so 1 MiB lines could pin ~1 GiB of heap.
+const MAX_BUS_LINE: usize = 8 * 1024;
 
 type LogFile = std::io::BufWriter<std::fs::File>;
 
@@ -92,13 +98,14 @@ async fn pump_stream<R: AsyncRead + Unpin>(
     date_format: Option<String>,
     no_files: bool,
 ) {
-    let mut lines = BufReader::with_capacity(READ_BUF, reader).lines();
+    let mut reader = BufReader::with_capacity(READ_BUF, reader);
+    let mut acc: Vec<u8> = Vec::new();
     let open = |skip: bool| -> Option<LogFile> { if skip { None } else { open_append(&path) } };
     let mut file = open(no_files);
     let mut generation = ctx.log_generation.load(Ordering::Relaxed);
     let mut write_failing = false;
 
-    while let Ok(Some(line)) = lines.next_line().await {
+    while let Some(line) = read_capped_line(&mut reader, &mut acc).await {
         let current = ctx.log_generation.load(Ordering::Relaxed);
         if current != generation {
             generation = current;
@@ -113,7 +120,7 @@ async fn pump_stream<R: AsyncRead + Unpin>(
             // batched lines hit the disk now and `pmr logs --nostream` stays
             // fresh. During a flood this flushes rarely.
             let res = res.and_then(|_| {
-                if lines.get_ref().buffer().is_empty() {
+                if reader.buffer().is_empty() {
                     f.flush()
                 } else {
                     Ok(())
@@ -139,6 +146,15 @@ async fn pump_stream<R: AsyncRead + Unpin>(
                 _ => {}
             }
         }
+        let line = if line.len() > MAX_BUS_LINE {
+            let mut end = MAX_BUS_LINE;
+            while !line.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}…", &line[..end])
+        } else {
+            line
+        };
         ctx.publish(Event::Log {
             pm_id,
             name: name.clone(),
@@ -152,6 +168,40 @@ async fn pump_stream<R: AsyncRead + Unpin>(
     }
 }
 
+/// Next log line, chunk-based: bounded memory (lines cap at MAX_LINE and are
+/// split), lossy UTF-8 (binary output can't kill the pump — `lines()` would
+/// end it on the first invalid byte). None = EOF or read error.
+pub(crate) async fn read_capped_line<R: AsyncRead + Unpin>(
+    reader: &mut BufReader<R>,
+    acc: &mut Vec<u8>,
+) -> Option<String> {
+    loop {
+        let buf = reader.fill_buf().await.ok()?;
+        if buf.is_empty() {
+            // EOF: emit any unterminated tail as a final line.
+            if acc.is_empty() {
+                return None;
+            }
+            return Some(String::from_utf8_lossy(&std::mem::take(acc)).into_owned());
+        }
+        match buf.iter().position(|&b| b == b'\n') {
+            Some(i) => {
+                acc.extend_from_slice(&buf[..i]);
+                reader.consume(i + 1);
+                return Some(String::from_utf8_lossy(&std::mem::take(acc)).into_owned());
+            }
+            None => {
+                let n = buf.len();
+                acc.extend_from_slice(buf);
+                reader.consume(n);
+                if acc.len() >= MAX_LINE {
+                    return Some(String::from_utf8_lossy(&std::mem::take(acc)).into_owned());
+                }
+            }
+        }
+    }
+}
+
 fn open_append(path: &Path) -> Option<LogFile> {
     if is_null(path) {
         return None;
@@ -159,12 +209,19 @@ fn open_append(path: &Path) -> Option<LogFile> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    std::fs::OpenOptions::new()
+    match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
-        .map(|f| std::io::BufWriter::with_capacity(WRITE_BUF, f))
-        .ok()
+    {
+        Ok(f) => Some(std::io::BufWriter::with_capacity(WRITE_BUF, f)),
+        Err(e) => {
+            // Loud: silent open failure (EMFILE, bad perms) means log lines
+            // vanish with no trace.
+            crate::daemon::dlog!("cannot open log file {}: {e}", path.display());
+            None
+        }
+    }
 }
 
 fn is_null(path: &Path) -> bool {

@@ -32,7 +32,10 @@ pub fn run() -> Result<()> {
         let Ok(stream) = sub.subscribe(&["log:out", "log:err"], None) else {
             return;
         };
-        for ev in stream.flatten() {
+        for ev in stream {
+            // Err = broken socket, not a skippable frame — stop instead of
+            // spinning on the same error forever.
+            let Ok(ev) = ev else { return };
             if log_tx.send(ev).is_err() {
                 return;
             }

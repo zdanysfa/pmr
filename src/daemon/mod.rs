@@ -37,6 +37,16 @@ pub(crate) use dlog;
 pub fn run() -> Result<()> {
     paths::ensure_dirs()?;
 
+    // ~6 fds per managed process: the default soft NOFILE of 1024 dies at
+    // ~170 procs. Raise to the hard limit up front.
+    if let Ok((soft, hard)) =
+        nix::sys::resource::getrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE)
+        && soft < hard
+    {
+        let _ =
+            nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE, hard, hard);
+    }
+
     // Singleton: exclusive flock on the pid file. Losing the race is fine —
     // another daemon is up and the client will connect to it.
     let pid_file = std::fs::OpenOptions::new()
@@ -54,6 +64,7 @@ pub fn run() -> Result<()> {
     };
     // Holding the lock: any existing socket is stale.
     let _ = std::fs::remove_file(paths::rpc_sock());
+    warn_orphans();
 
     use std::io::Write;
     let mut lock = lock;
@@ -63,6 +74,30 @@ pub fn run() -> Result<()> {
 
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(serve(lock))
+}
+
+/// After an unclean daemon death (SIGKILL/OOM) children survive in their own
+/// process groups. Killing them here risks recycled pids, so warn loudly
+/// instead — a blind `resurrect` would double-run every app.
+// ponytail: warn-only; pid-file adoption if users hit this often
+fn warn_orphans() {
+    let Ok(entries) = std::fs::read_dir(paths::pid_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Ok(s) = std::fs::read_to_string(&path)
+            && let Ok(pid) = s.trim().parse::<i32>()
+            && nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
+        {
+            dlog!(
+                "WARNING: stale pid file {} points at live pid {pid} — a previous daemon died uncleanly; \
+                 that process is unmanaged and `pmr resurrect` would start a duplicate. \
+                 Inspect with `ps -p {pid}` and kill it before resurrecting.",
+                path.display()
+            );
+        }
+    }
 }
 
 async fn serve(_lock: Flock<std::fs::File>) -> Result<()> {
@@ -79,6 +114,9 @@ async fn serve(_lock: Flock<std::fs::File>) -> Result<()> {
         shutting_down: AtomicBool::new(false),
         shutdown_tx,
         watchers: Mutex::new(HashMap::new()),
+        sys: Mutex::new(sysinfo::System::new()),
+        last_sample_ms: std::sync::atomic::AtomicI64::new(0),
+        prev_sample_pids: Mutex::new(Vec::new()),
     });
 
     tokio::spawn(crate::daemon::worker::run(ctx.clone()));
@@ -87,6 +125,10 @@ async fn serve(_lock: Flock<std::fs::File>) -> Result<()> {
     let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     let mut sigusr2 =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined2())?;
+    // Default SIGHUP action is instant death (no dump, stale socket, orphaned
+    // children) — and a daemon spawned from an SSH session gets HUP on
+    // disconnect. Installing a handler is enough to survive it.
+    let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
 
     dlog!(
         "daemon v{} online (pid {}, home {})",
@@ -102,7 +144,12 @@ async fn serve(_lock: Flock<std::fs::File>) -> Result<()> {
                     Ok((stream, _)) => {
                         tokio::spawn(rpc::handle(ctx.clone(), stream));
                     }
-                    Err(e) => dlog!("accept failed: {e}"),
+                    Err(e) => {
+                        dlog!("accept failed: {e}");
+                        // EMFILE fails instantly and forever — without a pause
+                        // this loop spins a core and floods pmr.log.
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
                 }
             }
             _ = sigterm.recv() => {
@@ -116,6 +163,9 @@ async fn serve(_lock: Flock<std::fs::File>) -> Result<()> {
             _ = sigusr2.recv() => {
                 ctx.log_generation.fetch_add(1, Ordering::Relaxed);
                 dlog!("SIGUSR2: log files will reopen");
+            }
+            _ = sighup.recv() => {
+                dlog!("SIGHUP ignored (use SIGTERM or `pmr kill` to stop the daemon)");
             }
             _ = shutdown_rx.recv() => {
                 dlog!("kill requested over RPC");
@@ -153,6 +203,11 @@ async fn graceful_shutdown(ctx: &Arc<Ctx>) {
     for h in handles {
         let _ = h.await;
     }
+
+    // Let the log pumps drain pipe EOFs and flush — exit(0) right after the
+    // stop acks loses the children's final lines (their shutdown output).
+    // ponytail: fixed grace instead of tracking pump handles
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
 
     let _ = std::fs::remove_file(paths::rpc_sock());
     let _ = std::fs::remove_file(paths::pid_file());
