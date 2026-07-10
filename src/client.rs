@@ -29,6 +29,7 @@ impl Pmr {
         match Self::try_connect() {
             Ok(pmr) => Ok(pmr),
             Err(_) => {
+                first_run_banner();
                 spawn_daemon()?;
                 let mut pmr = wait_connect(Duration::from_secs(5))?;
                 pmr.check_version()?;
@@ -244,6 +245,38 @@ impl From<Target> for TargetArg {
     fn from(t: Target) -> Self {
         TargetArg(t)
     }
+}
+
+/// pm2-style welcome banner, shown once: only when `~/.pmr` doesn't exist yet
+/// and we're on an interactive terminal.
+fn first_run_banner() {
+    use std::io::IsTerminal;
+    if crate::paths::home().exists() || !std::io::stdout().is_terminal() {
+        return;
+    }
+    let cyan = "\x1b[36m";
+    let bold = "\x1b[1m";
+    let dim = "\x1b[2m";
+    let reset = "\x1b[0m";
+    println!(
+        r#"{cyan}{bold}
+        ____  ____ ___  _____
+       / __ \/ __ `__ \/ ___/
+      / /_/ / / / / / / /
+     / .___/_/ /_/ /_/_/
+    /_/{reset}
+    {bold}pmr v{version}{reset} — efficient, fast, production-grade process manager
+    {dim}the pm2 workflow in one small binary: ~14x less memory, no Node.js needed{reset}
+
+      pmr start app.js         start an app (auto-restart on crash)
+      pmr ls                   process table
+      pmr logs                 tail + live stream
+      pmr save && pmr startup  survive reboots
+
+    {dim}docs: https://github.com/zdanysfa/pmr{reset}
+"#,
+        version = crate::VERSION,
+    );
 }
 
 /// Spawn the daemon detached, stdio appended to `pmr.log`.
