@@ -24,7 +24,7 @@ apps:
 | `namespace` | string, `default` | | Grouping label shown in `ls` |
 | `cwd` | path, script's directory | | Working directory |
 | `args` | list, `[]` | | Arguments passed to the script |
-| `runtime` | string, off | | Runtime by name — the ergonomic way: `bun`, `node`, `deno`, `python`. pmr probes the usual install locations at spawn (`~/.bun/bin/bun` → `/usr/local/bin` → `/usr/bin` → PATH), so no hardcoded binary paths. Mutually exclusive with `interpreter`. |
+| `runtime` | string, off | | Runtime by name — the ergonomic way: `bun`, `node`, `deno`, `python`. pmr probes the usual install locations at spawn (`$HOME/.bun/bin/bun` → `/usr/local/bin` → `/usr/bin` → PATH), so no hardcoded binary paths. Works both as a normal user and as root (`$HOME` is the daemon's home: `/home/user` or `/root`). One edge: a **root** daemon running an app with `uid: someuser` won't see `~someuser/.bun` — install the runtime system-wide or set an absolute `interpreter` there. Mutually exclusive with `interpreter`. |
 | `interpreter` | string, auto-detect | `exec_interpreter` | `node`, `python3`, ... `"none"` = execute directly. Auto-detect by extension: `.js/.cjs/.mjs`→node, `.ts/.tsx`→bun, `.py`→python3, `.sh`→bash, `.rb`→ruby, `.pl`→perl, `.php`→php |
 | `interpreter_args` | list, `[]` | `node_args`, `interpreterArgs` | Flags for the interpreter itself |
 | `instances` | int, `1` | | Fork N processes; each gets the instance index env var |
