@@ -24,7 +24,8 @@ apps:
 | `namespace` | string, `default` | | Grouping label shown in `ls` |
 | `cwd` | path, script's directory | | Working directory |
 | `args` | list, `[]` | | Arguments passed to the script |
-| `interpreter` | string, auto-detect | `exec_interpreter` | `node`, `python3`, ... `"none"` = execute directly. Auto-detect by extension: `.js/.cjs/.mjs/.ts`→node, `.py`→python3, `.sh`→bash, `.rb`→ruby, `.pl`→perl, `.php`→php |
+| `runtime` | string, off | | Runtime by name — the ergonomic way: `bun`, `node`, `deno`, `python`. pmr probes the usual install locations at spawn (`~/.bun/bin/bun` → `/usr/local/bin` → `/usr/bin` → PATH), so no hardcoded binary paths. Mutually exclusive with `interpreter`. |
+| `interpreter` | string, auto-detect | `exec_interpreter` | `node`, `python3`, ... `"none"` = execute directly. Auto-detect by extension: `.js/.cjs/.mjs`→node, `.ts/.tsx`→bun, `.py`→python3, `.sh`→bash, `.rb`→ruby, `.pl`→perl, `.php`→php |
 | `interpreter_args` | list, `[]` | `node_args`, `interpreterArgs` | Flags for the interpreter itself |
 | `instances` | int, `1` | | Fork N processes; each gets the instance index env var |
 | `instance_var` | string, `NODE_APP_INSTANCE` | | Name of the instance index env var |

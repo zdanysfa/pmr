@@ -45,6 +45,7 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             target,
             name,
             instances,
+            runtime,
             interpreter,
             cwd,
             env,
@@ -106,6 +107,7 @@ pub fn dispatch(cmd: Cmd) -> Result<()> {
             if let Some(n) = instances {
                 app.instances = n;
             }
+            app.runtime = runtime;
             app.interpreter = interpreter;
             if let Some(c) = cwd {
                 app.cwd = Some(c.into());

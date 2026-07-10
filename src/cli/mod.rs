@@ -31,6 +31,9 @@ pub enum Cmd {
         /// Number of instances
         #[arg(short = 'i', long)]
         instances: Option<u32>,
+        /// Runtime by name (bun|node|deno|python|...) — binary auto-resolved
+        #[arg(long)]
+        runtime: Option<String>,
         /// Interpreter (default: auto-detect by extension; "none" = run directly)
         #[arg(long)]
         interpreter: Option<String>,

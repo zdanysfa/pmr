@@ -78,6 +78,7 @@ Full guide: [docs/production.md](docs/production.md).
 
 ```sh
 pmr start app.js                       # interpreter auto-detected (node)
+pmr start main.ts --runtime bun        # runtime by name — binary auto-resolved
 pmr start worker.py --name worker -i 4 # 4 instances, NODE_APP_INSTANCE=0..3
 pmr start ecosystem.yaml --env production
 pmr ls                                 # process table

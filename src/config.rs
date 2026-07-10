@@ -58,8 +58,15 @@ pub struct AppConfig {
     /// Arguments passed to the script.
     #[serde(default)]
     pub args: Vec<String>,
+    /// Runtime by name — the ergonomic way: `runtime: bun`, `runtime: node`,
+    /// `runtime: python`, ... pmr resolves the actual binary at spawn time
+    /// (e.g. bun: `~/.bun/bin/bun` → `/usr/local/bin/bun` → `/usr/bin/bun` →
+    /// PATH). Mutually exclusive with `interpreter`.
+    #[serde(default)]
+    pub runtime: Option<String>,
     /// Interpreter (e.g. `node`, `python3`). `None` = auto-detect from extension,
-    /// `Some("none")` = execute the script directly.
+    /// `Some("none")` = execute the script directly. Prefer `runtime` for the
+    /// common cases.
     #[serde(default, alias = "exec_interpreter")]
     pub interpreter: Option<String>,
     #[serde(default, alias = "node_args", alias = "interpreterArgs")]
@@ -237,6 +244,13 @@ impl AppConfig {
         self
     }
 
+    /// Runtime by name: `bun`, `node`, `deno`, `python`, ... — binary
+    /// location resolved automatically at spawn.
+    pub fn runtime(mut self, rt: impl Into<String>) -> Self {
+        self.runtime = Some(rt.into());
+        self
+    }
+
     pub fn env(mut self, key: impl Into<String>, val: impl Into<String>) -> Self {
         self.env.insert(key.into(), val.into());
         self
@@ -302,12 +316,16 @@ impl AppConfig {
         }
     }
 
-    /// Resolve the interpreter: explicit > extension-based auto-detect > direct exec.
+    /// Resolve the interpreter: `runtime` > explicit `interpreter` >
+    /// extension-based auto-detect > direct exec.
     pub fn effective_interpreter(&self) -> Option<String> {
+        if let Some(rt) = self.runtime.as_deref() {
+            return Some(resolve_runtime(rt));
+        }
         match self.interpreter.as_deref() {
             Some("none") | Some("") => None,
             Some(i) => Some(i.to_string()),
-            None => detect_interpreter(&self.script),
+            None => detect_interpreter(&self.script).map(|rt| resolve_runtime(&rt)),
         }
     }
 
@@ -359,6 +377,9 @@ impl AppConfig {
                 .parse()
                 .map_err(|e| anyhow::anyhow!("invalid cron_restart '{expr}': {e}"))?;
         }
+        if self.runtime.is_some() && self.interpreter.is_some() {
+            bail!("set either `runtime` or `interpreter`, not both");
+        }
         if let Some(hc) = &self.health_check {
             if hc.command.trim().is_empty() {
                 bail!("health_check.command must not be empty");
@@ -376,7 +397,7 @@ pub fn detect_interpreter(script: &str) -> Option<String> {
     let ext = Path::new(script).extension()?.to_str()?;
     let interp = match ext {
         "js" | "cjs" | "mjs" => "node",
-        "ts" | "tsx" => "node", // assumes ts runtime configured via interpreter_args; explicit interpreter wins
+        "ts" | "tsx" => "bun", // like pm2: TypeScript runs on bun (set `runtime:` to override)
         "py" => "python3",
         "sh" => "bash",
         "rb" => "ruby",
@@ -385,6 +406,33 @@ pub fn detect_interpreter(script: &str) -> Option<String> {
         _ => return None,
     };
     Some(interp.into())
+}
+
+/// Resolve a runtime name to a concrete binary. Known runtimes get their
+/// usual install locations probed (installer dirs aren't always on the
+/// daemon's PATH); everything else — and no hit — falls back to the bare
+/// name, resolved via PATH at spawn.
+pub fn resolve_runtime(name: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates: Vec<String> = match name {
+        "bun" => vec![
+            format!("{home}/.bun/bin/bun"),
+            "/usr/local/bin/bun".into(),
+            "/usr/bin/bun".into(),
+        ],
+        "deno" => vec![
+            format!("{home}/.deno/bin/deno"),
+            "/usr/local/bin/deno".into(),
+            "/usr/bin/deno".into(),
+        ],
+        "node" => vec!["/usr/local/bin/node".into(), "/usr/bin/node".into()],
+        "python" => vec!["/usr/bin/python3".into()],
+        _ => vec![],
+    };
+    candidates
+        .into_iter()
+        .find(|c| Path::new(c).is_file())
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// Top-level ecosystem file: `{ "apps": [ ... ] }` (bare array also accepted for JSON/YAML).
@@ -478,7 +526,8 @@ apps:
   - script: ./app.js
     name: app
     instances: 1
-    # interpreter: node          # auto-detected from extension
+    # runtime: bun               # bun|node|deno|python — binary auto-resolved
+    # interpreter: node          # or auto-detected from extension
     # args: ["--port", "3000"]
     # cwd: /srv/app
     env:
@@ -519,7 +568,8 @@ mod tests {
         assert_eq!(cfg.kill_signal, "SIGINT");
         assert!(cfg.autorestart);
         assert!(cfg.treekill);
-        assert_eq!(cfg.effective_interpreter().as_deref(), Some("node"));
+        // Resolution may return a full path depending on the machine.
+        assert!(cfg.effective_interpreter().unwrap().ends_with("node"));
     }
 
     #[test]
@@ -527,9 +577,31 @@ mod tests {
         assert_eq!(detect_interpreter("a.py").as_deref(), Some("python3"));
         assert_eq!(detect_interpreter("a.sh").as_deref(), Some("bash"));
         assert_eq!(detect_interpreter("a.rb").as_deref(), Some("ruby"));
+        assert_eq!(detect_interpreter("a.ts").as_deref(), Some("bun"));
         assert_eq!(detect_interpreter("mybinary"), None);
         let direct = AppConfig::new("script.py").interpreter("none");
         assert_eq!(direct.effective_interpreter(), None);
+    }
+
+    #[test]
+    fn runtime_field() {
+        let cfg = AppConfig::new("main.ts").runtime("bun");
+        assert!(cfg.effective_interpreter().unwrap().ends_with("bun"));
+
+        // Unknown runtime falls back to bare name (PATH resolution at spawn).
+        let cfg = AppConfig::new("x").runtime("myruntime");
+        assert_eq!(cfg.effective_interpreter().as_deref(), Some("myruntime"));
+
+        // runtime + interpreter together is ambiguous.
+        let mut cfg = AppConfig::new("x").runtime("bun");
+        cfg.interpreter = Some("node".into());
+        assert!(cfg.validate().is_err());
+
+        // runtime survives serde round-trip (dump/resurrect).
+        let cfg = AppConfig::new("main.ts").runtime("bun");
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.runtime.as_deref(), Some("bun"));
     }
 
     #[test]

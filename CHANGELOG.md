@@ -6,6 +6,17 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`runtime` config field / `--runtime` flag**: declare the runtime by name
+  (`runtime: bun`, `node`, `deno`, `python`) — pmr probes the usual install
+  locations at spawn (`~/.bun/bin/bun` → `/usr/local/bin` → `/usr/bin` →
+  PATH), so ecosystem files need no hardcoded binary paths. Mutually
+  exclusive with `interpreter`.
+- `pmr version` command: prints client and daemon versions.
+
+### Changed
+- `.ts`/`.tsx` auto-detection now picks bun (was node), matching pm2.
+
 ## [0.2.0] - 2026-07-10
 
 ### Added
