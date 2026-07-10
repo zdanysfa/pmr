@@ -6,13 +6,23 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-10
+
 ### Added
 - **`runtime` config field / `--runtime` flag**: declare the runtime by name
   (`runtime: bun`, `node`, `deno`, `python`) — pmr probes the usual install
   locations at spawn (`~/.bun/bin/bun` → `/usr/local/bin` → `/usr/bin` →
   PATH), so ecosystem files need no hardcoded binary paths. Mutually
   exclusive with `interpreter`.
+- **pm2-style `pmr ls` table**: full grid with solid column lines, new
+  `mode`, `user` and `watching` columns, bold header, colored id/status.
+- **First-run welcome banner** (interactive terminals only, shown once when
+  `~/.pmr` is created).
+- **`pmr startup`/`unstartup` auto-sudo**: re-executes itself through sudo on
+  a terminal instead of making you copy-paste a sudo command like pm2 does.
 - `pmr version` command: prints client and daemon versions.
+- Brand: rust-orange isometric cube logo (light/dark) in the README;
+  documentation moved to the Mintlify site (pmr-docs repo).
 
 ### Changed
 - `.ts`/`.tsx` auto-detection now picks bun (was node), matching pm2.
@@ -95,6 +105,7 @@ audit of pm2 v7.0.3 internals.
 - JavaScript config files (JSON/YAML/TOML only).
 - pm2.io/keymetrics agent, module system, deploy, serve.
 
-[Unreleased]: https://github.com/zdanysfa/pmr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zdanysfa/pmr/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zdanysfa/pmr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zdanysfa/pmr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zdanysfa/pmr/releases/tag/v0.1.0
