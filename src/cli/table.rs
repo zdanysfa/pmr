@@ -1,28 +1,50 @@
 //! Terminal rendering for `ls` and `describe`.
 
-use comfy_table::{Cell, Color, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Attribute, Cell, Color, Table, presets::UTF8_BORDERS_ONLY, presets::UTF8_FULL};
 
 use crate::ipc::{ProcessSnapshot, Status};
 
+/// pm2-style process table: full grid, bold header, colored status.
 pub fn render_list(procs: &[ProcessSnapshot]) -> String {
+    use comfy_table::TableComponent as TC;
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
-    table.set_header(vec![
-        "id",
-        "name",
-        "namespace",
-        "pid",
-        "uptime",
-        "↺",
-        "status",
-        "cpu",
-        "mem",
-    ]);
+    table.load_preset(UTF8_FULL);
+    // pm2 look: solid column lines, no separators between rows.
+    table.set_style(TC::VerticalLines, '│');
+    for c in [
+        TC::HorizontalLines,
+        TC::MiddleIntersections,
+        TC::LeftBorderIntersections,
+        TC::RightBorderIntersections,
+    ] {
+        table.remove_style(c);
+    }
+    table.set_header(
+        [
+            "id",
+            "name",
+            "namespace",
+            "mode",
+            "pid",
+            "uptime",
+            "↺",
+            "status",
+            "cpu",
+            "mem",
+            "user",
+            "watching",
+        ]
+        .into_iter()
+        .map(|h| Cell::new(h).add_attribute(Attribute::Bold)),
+    );
+    let me = std::env::var("USER").unwrap_or_else(|_| "-".into());
     for p in procs {
+        let user = p.config.uid.clone().unwrap_or_else(|| me.clone());
         table.add_row(vec![
-            Cell::new(p.pm_id),
-            Cell::new(&p.name),
+            Cell::new(p.pm_id).fg(Color::Cyan),
+            Cell::new(&p.name).add_attribute(Attribute::Bold),
             Cell::new(&p.namespace),
+            Cell::new("fork").fg(Color::DarkGrey),
             Cell::new(if p.pid == 0 {
                 "-".into()
             } else {
@@ -33,6 +55,12 @@ pub fn render_list(procs: &[ProcessSnapshot]) -> String {
             status_cell(p.status),
             Cell::new(format!("{:.1}%", p.monit.cpu)),
             Cell::new(format_bytes(p.monit.memory)),
+            Cell::new(user),
+            if p.config.watch {
+                Cell::new("enabled").fg(Color::Green)
+            } else {
+                Cell::new("disabled").fg(Color::DarkGrey)
+            },
         ]);
     }
     table.to_string()
