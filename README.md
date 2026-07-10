@@ -29,7 +29,7 @@ Rust — one 3.4 MB binary, a fraction of the memory, no Node.js runtime require
 ## Why pmr over pm2
 
 Measured on the same Linux machine with `bench/bench.sh` (methodology and 24 h
-soak analysis: [benchmarks](https://pmr.mintlify.app/benchmarks)):
+soak analysis: [benchmarks](https://pmr-b456514d.mintlify.site/benchmarks)):
 
 |                      | pmr                 | pm2 v7                     |
 | -------------------- | ------------------- | -------------------------- |
@@ -38,7 +38,7 @@ soak analysis: [benchmarks](https://pmr.mintlify.app/benchmarks)):
 | `ls` latency with 25 procs | **4 ms**      | 212 ms                     |
 | Restart 25 processes | **36 ms**           | 1 908 ms                   |
 | Log flood drain @ daemon CPU | **141 k lines/s @ 66 %** | 131 k lines/s @ 111 % |
-| 24/7 stability       | soak-tested, no leak indicators ([analysis](https://pmr.mintlify.app/benchmarks)) | battle-tested |
+| 24/7 stability       | soak-tested, no leak indicators ([analysis](https://pmr-b456514d.mintlify.site/benchmarks)) | battle-tested |
 | Install footprint    | **one 3.4 MB binary** | Node.js runtime + node_modules |
 | Runtime dependency   | **none**            | Node.js                    |
 
@@ -83,7 +83,7 @@ pmr startup                           # systemd unit (asks sudo itself)
 ```
 
 Reboot-proof: the unit runs `pmr resurrect` at boot and your apps come back.
-Full guide: [production](https://pmr.mintlify.app/production).
+Full guide: [production](https://pmr-b456514d.mintlify.site/production).
 
 ## Quick start
 
@@ -99,7 +99,7 @@ pmr stop worker && pmr restart all
 pmr kill                               # stop daemon + everything
 ```
 
-All commands: [cli](https://pmr.mintlify.app/cli) or `pmr --help`.
+All commands: [cli](https://pmr-b456514d.mintlify.site/cli) or `pmr --help`.
 
 ## Use as a Rust library
 
@@ -134,7 +134,7 @@ for event in events { /* ... */ }
 ```
 
 The client is synchronous — no tokio required in your app; wrap in
-`spawn_blocking` from async code. Details: [library](https://pmr.mintlify.app/library).
+`spawn_blocking` from async code. Details: [library](https://pmr-b456514d.mintlify.site/library).
 
 ## Ecosystem files
 
@@ -157,7 +157,7 @@ apps:
     stop_exit_codes: [0]
 ```
 
-Every option: [configuration](https://pmr.mintlify.app/configuration).
+Every option: [configuration](https://pmr-b456514d.mintlify.site/configuration).
 
 ## Beyond pm2
 
@@ -200,17 +200,17 @@ Built from a line-by-line audit of pm2 v7.0.3:
 
 ## Documentation
 
-Full docs: **https://pmr.mintlify.app**
+Full docs: **https://pmr-b456514d.mintlify.site**
 
 | Page | Contents |
 | --- | --- |
-| [quickstart](https://pmr.mintlify.app/quickstart) | first process, daily commands, surviving reboots |
-| [production](https://pmr.mintlify.app/production) | VPS setup, systemd, 24/7 operation, logrotate, monitoring |
-| [configuration](https://pmr.mintlify.app/configuration) | every config field with defaults |
-| [cli](https://pmr.mintlify.app/cli) | full command reference |
-| [library](https://pmr.mintlify.app/library) | Rust crate API |
-| [comparison](https://pmr.mintlify.app/comparison) | pmr vs pm2 feature map |
-| [benchmarks](https://pmr.mintlify.app/benchmarks) | full benchmark results, soak test, 24 h leak analysis |
+| [quickstart](https://pmr-b456514d.mintlify.site/quickstart) | first process, daily commands, surviving reboots |
+| [production](https://pmr-b456514d.mintlify.site/production) | VPS setup, systemd, 24/7 operation, logrotate, monitoring |
+| [configuration](https://pmr-b456514d.mintlify.site/configuration) | every config field with defaults |
+| [cli](https://pmr-b456514d.mintlify.site/cli) | full command reference |
+| [library](https://pmr-b456514d.mintlify.site/library) | Rust crate API |
+| [comparison](https://pmr-b456514d.mintlify.site/comparison) | pmr vs pm2 feature map |
+| [benchmarks](https://pmr-b456514d.mintlify.site/benchmarks) | full benchmark results, soak test, 24 h leak analysis |
 
 ## Development
 
