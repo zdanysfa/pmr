@@ -19,6 +19,7 @@ Flags on `pmr start <script>`:
 | --- | --- |
 | `--name <n>` | process name |
 | `-i, --instances <n>` | number of instances |
+| `--runtime <name>` | runtime by name (bun/node/deno/python), binary auto-resolved |
 | `--interpreter <bin>` | force interpreter (`none` = direct) |
 | `--cwd <dir>` | working directory |
 | `--env <profile>` | env profile (config files) |
