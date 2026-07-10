@@ -1,0 +1,66 @@
+<svg width="1300" height="400" viewBox="0 0 1300 400" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PMR">
+  <defs>
+    <linearGradient id="gTop" x1="70" y1="60" x2="330" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffb300"/>
+      <stop offset="100%" stop-color="#ff6d00"/>
+    </linearGradient>
+    <linearGradient id="gLeft" x1="70" y1="125" x2="200" y2="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff3d00"/>
+      <stop offset="100%" stop-color="#d50000"/>
+    </linearGradient>
+    <linearGradient id="gRight" x1="330" y1="125" x2="200" y2="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff9e40"/>
+      <stop offset="100%" stop-color="#f74c00"/>
+    </linearGradient>
+    <linearGradient id="gTrailUp" x1="150" y1="60" x2="20" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffb300"/>
+      <stop offset="100%" stop-color="#ffb300" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gTrailDown" x1="150" y1="330" x2="20" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d50000"/>
+      <stop offset="100%" stop-color="#d50000" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ================= emblem: isometric cube ================= -->
+  <!-- top face -->
+  <path d="M200 50 L330 125 L200 200 L70 125 Z" fill="url(#gTop)"/>
+  <!-- left face -->
+  <path d="M70 125 L200 200 L200 350 L70 275 Z" fill="url(#gLeft)"/>
+  <!-- right face -->
+  <path d="M330 125 L330 275 L200 350 L200 200 Z" fill="url(#gRight)"/>
+
+  <!-- circuit grooves: top face (chevrons following the face) -->
+  <path d="M132 118 L200 158 L268 118" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M166 92 L200 112 L234 92" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- circuit grooves: left face -->
+  <path d="M100 172 L100 240" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M136 193 L136 288" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M172 214 L172 258" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="172" cy="290" r="8" fill="#ffffff"/>
+  <!-- circuit grooves: right face -->
+  <path d="M300 172 L300 240" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M264 193 L264 288" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M228 214 L228 258" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="228" cy="290" r="8" fill="#ffffff"/>
+
+  <!-- motion trails -->
+  <path d="M148 68 L58 120" stroke="url(#gTrailUp)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M118 46 L48 86"  stroke="url(#gTrailUp)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M148 332 L58 280" stroke="url(#gTrailDown)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M118 354 L48 314" stroke="url(#gTrailDown)" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- ================= wordmark: pmr (monoline) ================= -->
+  <g stroke="#15151c" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- p -->
+    <path d="M480 152 V348"/>
+    <path d="M480 190 C480 120 610 120 610 190 C610 260 480 260 480 190 Z"/>
+    <!-- m -->
+    <path d="M700 138 V252"/>
+    <path d="M700 196 C700 130 792 130 792 196 V252"/>
+    <path d="M792 196 C792 130 884 130 884 196 V252"/>
+    <!-- r -->
+    <path d="M974 138 V252"/>
+    <path d="M974 200 C974 138 1052 130 1078 162"/>
+  </g>
+</svg>

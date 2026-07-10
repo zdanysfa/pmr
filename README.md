@@ -1,6 +1,12 @@
-<p align="center">
-  <img src="assets/logo.svg" alt="pmr — efficient, fast, production-grade process manager" width="700"/>
-</p>
+<div align="center">
+  <br/>
+  <picture>
+    <source srcset="assets/logo-dark.svg" width="640px" media="(prefers-color-scheme: dark)"/>
+    <source srcset="assets/logo-light.svg" width="640px" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"/>
+    <img src="assets/logo-light.svg" width="640px" alt="pmr — efficient, fast, production-grade process manager"/>
+  </picture>
+  <br/>
+</div>
 
 <p align="center">
   <a href="https://github.com/zdanysfa/pmr/actions"><img src="https://github.com/zdanysfa/pmr/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
