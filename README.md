@@ -68,7 +68,7 @@ Shell completions: `pmr completions bash | sudo tee /etc/bash_completion.d/pmr`
 ```sh
 pmr start ecosystem.yaml --env production
 pmr save                              # persist the process list
-sudo env PATH=$PATH USER=$USER $(which pmr) startup   # install systemd unit
+pmr startup                           # systemd unit (asks sudo itself)
 ```
 
 Reboot-proof: the unit runs `pmr resurrect` at boot and your apps come back.

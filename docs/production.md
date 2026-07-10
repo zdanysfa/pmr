@@ -32,7 +32,7 @@ pmr ls                        # verify everything is online
 
 # 3. Persist across reboots
 pmr save
-sudo env PATH=$PATH USER=$USER $(which pmr) startup
+pmr startup          # asks sudo itself (pm2 makes you copy-paste a sudo command)
 ```
 
 `pmr startup` writes `/etc/systemd/system/pmr-<user>.service` and enables it.

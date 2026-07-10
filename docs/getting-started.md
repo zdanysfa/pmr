@@ -82,7 +82,7 @@ See [configuration.md](configuration.md) for every field.
 
 ```sh
 pmr save             # snapshot the process list
-sudo env PATH=$PATH USER=$USER $(which pmr) startup   # systemd unit
+pmr startup          # systemd unit — asks sudo itself on a terminal
 ```
 
 Details (VPS hardening, logrotate, 24/7 operation): [production.md](production.md).
