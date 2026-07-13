@@ -6,6 +6,17 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-13
+
+### Changed
+- **`pmr delete` now removes the process's log files** (out, error, and their
+  rotated `.old` siblings) along with the pid file — a deleted app's logs are
+  stale the moment the name is reused. Deliberate divergence from pm2, which
+  keeps logs after delete. Paths still shared by live instances (`merge_logs`)
+  are kept. `pmr flush` remains for clearing logs of running processes.
+- All delete paths (RPC direct and via supervisor) route through one shared
+  `remove_proc`, so cleanup behavior can't drift between them.
+
 ## [0.4.0] - 2026-07-10
 
 Hardening release: four independent audits (concurrency, 24/7 durability,

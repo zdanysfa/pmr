@@ -502,12 +502,30 @@ fn clear_cmd_tx(ctx: &Ctx, pm_id: u32) {
     }
 }
 
-fn remove_proc(ctx: &Ctx, pm_id: u32, name: &str) {
-    {
+pub(crate) fn remove_proc(ctx: &Ctx, pm_id: u32, name: &str) {
+    // Unlike pm2, delete also removes the log files: a deleted app's logs are
+    // stale the moment the name is reused. Paths still referenced by live
+    // instances (merge_logs) are kept. fs ops happen outside the lock.
+    let log_files = {
         let mut table = ctx.table.lock().unwrap();
-        if let Some(mut p) = table.procs.remove(&pm_id) {
-            p.abort_tasks();
+        match table.procs.remove(&pm_id) {
+            Some(mut p) => {
+                p.abort_tasks();
+                let mut files = vec![p.out_file, p.error_file];
+                files.retain(|f| {
+                    !table
+                        .procs
+                        .values()
+                        .any(|q| q.out_file == *f || q.error_file == *f)
+                });
+                files
+            }
+            None => Vec::new(),
         }
+    };
+    for f in log_files {
+        let _ = std::fs::remove_file(crate::daemon::worker::rotated_path(&f));
+        let _ = std::fs::remove_file(f);
     }
     ctx.watchers.lock().unwrap().remove(&pm_id);
     ctx.publish_process_event(pm_id, name, "delete");

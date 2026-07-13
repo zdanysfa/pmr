@@ -265,29 +265,18 @@ pub async fn delete_one(ctx: &Arc<Ctx>, pm_id: u32) -> Result<()> {
                 // handled first) without seeing our Delete — remove directly
                 // so `delete` never silently no-ops.
                 if ack_rx.await.is_err() {
-                    remove_row(ctx, pm_id, &name);
+                    supervisor::remove_proc(ctx, pm_id, &name);
                 }
                 return Ok(());
             }
-            remove_row(ctx, pm_id, &name);
+            supervisor::remove_proc(ctx, pm_id, &name);
             Ok(())
         }
         None => {
-            remove_row(ctx, pm_id, &name);
+            supervisor::remove_proc(ctx, pm_id, &name);
             Ok(())
         }
     }
-}
-
-fn remove_row(ctx: &Ctx, pm_id: u32, name: &str) {
-    {
-        let mut table = ctx.table.lock().unwrap();
-        if let Some(mut p) = table.procs.remove(&pm_id) {
-            p.abort_tasks();
-        }
-    }
-    ctx.watchers.lock().unwrap().remove(&pm_id);
-    ctx.publish_process_event(pm_id, name, "delete");
 }
 
 pub fn snapshots(ctx: &Ctx, ids: &[u32], with_env: bool) -> Vec<ProcessSnapshot> {

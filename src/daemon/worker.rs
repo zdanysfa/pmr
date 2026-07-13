@@ -54,6 +54,16 @@ const DAEMON_LOG_MAX: u64 = 10 * 1024 * 1024;
 /// log files an operator deleted (`rm logs/app-out.log` leaves the pump
 /// writing to an unlinked inode — invisible disk growth) by bumping the
 /// generation so pumps recreate them.
+/// `<file>.old` — the single rotation backup slot for `file`.
+pub(crate) fn rotated_path(file: &std::path::Path) -> std::path::PathBuf {
+    file.with_extension(format!(
+        "{}old",
+        file.extension()
+            .map(|e| format!("{}.", e.to_string_lossy()))
+            .unwrap_or_default()
+    ))
+}
+
 // ponytail: single .old slot; point users at OS logrotate for N generations
 fn rotate_logs(ctx: &Ctx) {
     // Snapshot paths under the lock, stat AFTER releasing it — a hung
@@ -81,12 +91,7 @@ fn rotate_logs(ctx: &Ctx) {
             // Deleted out from under the pump: reopen recreates it.
             Err(_) => bump = true,
             Ok(m) if limit.is_some_and(|l| m.len() > l) => {
-                let old = file.with_extension(format!(
-                    "{}old",
-                    file.extension()
-                        .map(|e| format!("{}.", e.to_string_lossy()))
-                        .unwrap_or_default()
-                ));
+                let old = rotated_path(file);
                 match std::fs::rename(file, &old) {
                     Ok(()) => {
                         dlog!("rotated {} → {}", file.display(), old.display());

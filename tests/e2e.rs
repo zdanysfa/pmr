@@ -113,11 +113,14 @@ fn cold_start_roundtrip() {
         l[0]["status"] == "online" && l[0]["restarts"] == 1
     });
 
-    // delete empties the table.
+    // delete empties the table and removes the log files.
+    let out_log = h.dir.join("logs/sleeper-0-out.log");
+    assert!(out_log.exists(), "out log should exist while managed");
     h.pmr_ok(&["delete", "all"]);
     h.wait_for("table empty", Duration::from_secs(5), |l| {
         l.as_array().unwrap().is_empty()
     });
+    assert!(!out_log.exists(), "delete must remove log files");
 }
 
 #[test]
